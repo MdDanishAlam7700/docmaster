@@ -1,4 +1,4 @@
-# DocMaster
+# Doc Master
 
 **55+ document conversion tools — all in your browser, files never leave your device.**
 
@@ -73,8 +73,8 @@ Word counter, QR code generator — 2 tools.
 
 ```bash
 # Clone the repository
-git clone https://github.com/MdDanishAlam7700/docmaster.git
-cd docmaster
+git clone https://github.com/MdDanishAlam7700/Doc Master.git
+cd Doc Master
 
 # Install dependencies
 npm install
@@ -119,7 +119,7 @@ src/
 
 The app is deployed on **Vercel** — every push to `main` auto-deploys.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/MdDanishAlam7700/docmaster)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/MdDanishAlam7700/Doc Master)
 
 ---
 
@@ -134,3 +134,8 @@ The app is deployed on **Vercel** — every push to `main` auto-deploys.
 - [ilovepdf.com](https://www.ilovepdf.com) — inspiration
 - [123apps.com](https://123apps.com) — inspiration
 - All the open-source libraries that make this possible
+
+---
+
+**Made by Danish**
+
