@@ -106,16 +106,33 @@ export async function excelToHtml(file: File): Promise<ConversionResult> {
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Arial,sans-serif;padding:20px;background:#f8fafc}
-table{border-collapse:collapse;border:1px solid #cbd5e1;background:#fff;margin-bottom:20px}
-td,th{border:1px solid #cbd5e1;padding:6px 10px;min-width:60px;overflow:hidden;text-overflow:ellipsis}
+table{border-collapse:collapse;background:#fff;margin-bottom:20px;table-layout:fixed;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+td,th{padding:6px 10px;min-width:40px;overflow:hidden;text-overflow:ellipsis}
+table.gridlines{border:1px solid #cbd5e1}
+table.gridlines td, table.gridlines th{border:1px solid #e2e8f0}
 th{background-color:#f1f5f9;font-weight:bold}
 </style></head><body>`;
 
   workbook.eachSheet((sheet) => {
+    let showGrid = true;
+    if (sheet.views && sheet.views.length > 0) {
+      showGrid = sheet.views[0].showGridLines !== false;
+    }
+
     const colWidths: Record<number, string> = {};
     sheet.columns?.forEach((col, i) => {
-      if (col.width) colWidths[i + 1] = `${Math.round(col.width * 7)}px`;
+      if (col.width) colWidths[i + 1] = `${Math.round(col.width * 8)}px`;
     });
+
+    let totalWidth = 0;
+    let colGroups = '';
+    const maxCols = Math.max(sheet.columnCount, 1);
+    for (let c = 1; c <= maxCols; c++) {
+      const colWStr = colWidths[c];
+      const colWPx = colWStr ? parseInt(colWStr) : 100;
+      totalWidth += colWPx;
+      colGroups += `<col style="width:${colWPx}px">`;
+    }
 
     const mergeRanges: Record<string, { rowspan: number; colspan: number }> = {};
     const rowHeights: Record<number, string> = {};
@@ -135,17 +152,19 @@ th{background-color:#f1f5f9;font-weight:bold}
 
     const occupiedCells = new Set<string>();
 
-    html += `<h2 style="margin:0 0 8px 0">${sheet.name}</h2>`;
-    html += `<table style="min-width:${sheet.columnCount * 100}px">`;
+    html += `<h2 style="margin:0 0 8px 0;font-size:16px;color:#334155">${sheet.name}</h2>`;
+    html += `<table class="${showGrid ? 'gridlines' : ''}" style="min-width:${totalWidth}px;width:${totalWidth}px">`;
+    html += colGroups;
 
     sheet.eachRow((row) => {
       if (row.height) rowHeights[row.number] = `${row.height}px`;
 
       html += `<tr${row.height ? ` style="height:${row.height}px"` : ''}>`;
 
-      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      for (let colNumber = 1; colNumber <= maxCols; colNumber++) {
+        const cell = row.getCell(colNumber);
         const cellKey = `${row.number}:${colNumber}`;
-        if (occupiedCells.has(cellKey)) return;
+        if (occupiedCells.has(cellKey)) continue;
 
         const mergeKey = `${row.number}:${colNumber}`;
         const merge = mergeRanges[mergeKey];
@@ -167,16 +186,11 @@ th{background-color:#f1f5f9;font-weight:bold}
             }
           }
         } else if (cell.isMerged && masterAddr) {
-          const parts = masterAddr.match(/([A-Z]+)(\d+)/);
-          if (parts) {
-            const mCol = parts[1];
-            const mRow = parseInt(parts[2]);
-            occupiedCells.add(cellKey);
-            skipRender = true;
-          }
+          occupiedCells.add(cellKey);
+          skipRender = true;
         }
 
-        if (skipRender) return;
+        if (skipRender) continue;
 
         const tag = row.number === 1 ? 'th' : 'td';
         const font = cell.font || {};
@@ -213,6 +227,15 @@ th{background-color:#f1f5f9;font-weight:bold}
         if (alignment.vertical) styles.push(`vertical-align:${alignment.vertical}`);
         if (alignment.wrapText) styles.push('white-space:normal;word-wrap:break-word');
 
+        // Calculate cell width based on spanned columns
+        let cellWidthPx = 0;
+        for (let c = 0; c < colspan; c++) {
+          const colWStr = colWidths[colNumber + c];
+          const colWPx = colWStr ? parseInt(colWStr) : 100;
+          cellWidthPx += colWPx;
+        }
+        styles.push(`width:${cellWidthPx}px`);
+
         let colSpanStr = colspan > 1 ? ` colspan="${colspan}"` : '';
         let rowSpanStr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
         let styleStr = styles.length > 0 ? ` style="${styles.join(';')}"` : '';
@@ -228,7 +251,7 @@ th{background-color:#f1f5f9;font-weight:bold}
         }
 
         html += `<${tag}${colSpanStr}${rowSpanStr}${styleStr}>${String(cellValue)}</${tag}>`;
-      });
+      }
 
       html += '</tr>';
     });

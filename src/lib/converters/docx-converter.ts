@@ -51,6 +51,7 @@ interface CellStyle {
   fontFamily?: string;
   align?: string;
   valign?: string;
+  width?: string;
   borderTop?: string;
   borderBottom?: string;
   borderLeft?: string;
@@ -72,6 +73,7 @@ function parseStyle(style: string): CellStyle {
     if (k === 'font-family') s.fontFamily = v;
     if (k === 'text-align') s.align = v;
     if (k === 'vertical-align') s.valign = v;
+    if (k === 'width') s.width = v;
     if (k === 'border-top') s.borderTop = v;
     if (k === 'border-bottom') s.borderBottom = v;
     if (k === 'border-left') s.borderLeft = v;
@@ -221,8 +223,18 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
               docxCellOptions.shading = { type: ShadingType.CLEAR, fill: normalizeHex(cellStyle.bgColor) };
             }
 
-            if (cellStyle.align) {
+            if (cellStyle.valign) {
               docxCellOptions.verticalAlign = cellStyle.valign === 'top' ? 'top' as any : cellStyle.valign === 'bottom' ? 'bottom' as any : 'center' as any;
+            }
+
+            if (cellStyle.width) {
+              const widthVal = parseFloat(cellStyle.width);
+              if (!isNaN(widthVal)) {
+                docxCellOptions.width = {
+                  size: Math.round(widthVal * 15), // Convert px to DXA (1px ≈ 15 DXA)
+                  type: WidthType.DXA,
+                };
+              }
             }
 
             docxCells.push(new TableCell(docxCellOptions));
