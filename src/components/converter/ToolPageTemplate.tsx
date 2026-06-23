@@ -71,14 +71,14 @@ export function ToolPageTemplate({
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Home
-      </Link>
-      <div className="text-center space-y-2">
+      <div className="text-center space-y-2 relative">
+        <Link
+          href="/"
+          className="absolute left-0 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Link>
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-primary/80 to-primary shadow-lg mb-2 [&_svg]:text-primary-foreground">
           {icon}
         </div>
