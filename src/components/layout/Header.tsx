@@ -16,7 +16,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-primary via-primary to-primary/80 shadow flex items-center justify-center">
             <FileText className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="font-bold">DocMaster</span>
+          <span className="font-bold">Doc Master</span>
         </Link>
       </div>
       <div className="flex items-center gap-2">

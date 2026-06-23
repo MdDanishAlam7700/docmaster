@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DocMaster - All-in-One Document Converter",
+  title: "Doc Master - All-in-One Document Converter",
   description: "Convert, merge, split, compress, and transform documents with 55+ tools. PDF, Word, Excel, Images, and more.",
   icons: {
     icon: '/icon.svg',

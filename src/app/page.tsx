@@ -219,10 +219,10 @@ export default function HomePage() {
             {/* Footer */}
             <footer className="text-center py-8 border-t space-y-2">
               <p className="text-sm text-muted-foreground">
-                DocMaster &mdash; All files are processed locally in your browser. No uploads. Complete privacy.
+                Doc Master &mdash; All files are processed locally in your browser. No uploads. Complete privacy.
               </p>
               <p className="text-xs text-muted-foreground/60">
-                v1.0.0 &middot; Built with Next.js &middot; &copy; {new Date().getFullYear()}
+                v1.0.0 &middot; Built with Next.js &middot; Made by Danish &middot; &copy; {new Date().getFullYear()}
               </p>
             </footer>
           </div>
