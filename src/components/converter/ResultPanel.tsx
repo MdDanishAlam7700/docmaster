@@ -42,7 +42,7 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
   if (progress.status === 'idle') return null;
 
   return (
-    <Card className="p-6">
+    <div className="p-4 md:p-6 rounded-xl border border-dashed border-border bg-muted/20 animate-in fade-in duration-200">
       <div className="space-y-4">
         {progress.status === 'processing' && (
           <div className="space-y-3">
@@ -155,7 +155,7 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
           </div>
         )}
       </div>
-    </Card>
+    </div>
   );
 }
 

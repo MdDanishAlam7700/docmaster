@@ -20,35 +20,48 @@ export async function renderHtmlToPdf(html: string, filename: string): Promise<C
     });
 
     const pdf = new jspdf({ unit: 'mm', format: 'a4' });
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const pdfW = 210;
     const pdfH = 297;
+    const margin = 10;
+    const printableW = pdfW - (margin * 2);
+    const printableH = pdfH - (margin * 2);
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const imgW = canvas.width;
     const imgH = canvas.height;
-    const ratio = Math.min(pdfW / imgW, pdfH / imgH);
-    const renderW = imgW * ratio;
+    
+    // Scale ratio based on width to fit printable page area
+    const ratio = printableW / imgW;
+    const renderW = printableW;
     const renderH = imgH * ratio;
-    const x = (pdfW - renderW) / 2;
+    const x = margin;
 
-    if (renderH <= pdfH) {
-      pdf.addImage(imgData, 'JPEG', x, 10, renderW, renderH);
+    if (renderH <= printableH) {
+      pdf.addImage(imgData, 'JPEG', x, margin, renderW, renderH);
     } else {
       let remaining = imgH;
       let yOffset = 0;
       const pageCanvas = document.createElement('canvas');
       pageCanvas.width = canvas.width;
-      pageCanvas.height = canvas.height;
-      const pageCtx = pageCanvas.getContext('2d')!;
+      
+      const maxPageH = Math.floor(printableH / ratio); // page slice height in pixels
 
       while (remaining > 0) {
-        const pageH = Math.min(remaining, pdfH / ratio);
-        pageCtx.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
-        pageCtx.drawImage(canvas, 0, yOffset, canvas.width, pageH * ratio, 0, 0, canvas.width, pageH * ratio);
+        const sliceH = Math.min(remaining, maxPageH);
+        pageCanvas.height = sliceH;
+        const pageCtx = pageCanvas.getContext('2d')!;
+        
+        // Draw the pixel slice from original canvas to temporary pageCanvas
+        pageCtx.drawImage(canvas, 0, yOffset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        
         const pageData = pageCanvas.toDataURL('image/jpeg', 0.92);
         if (yOffset > 0) pdf.addPage();
-        pdf.addImage(pageData, 'JPEG', x, 10, renderW, pageH * ratio);
-        yOffset += pageH * ratio;
-        remaining -= pageH;
+        
+        const renderSliceH = sliceH * ratio; // convert pixel height to mm
+        pdf.addImage(pageData, 'JPEG', x, margin, renderW, renderSliceH);
+        
+        yOffset += sliceH;
+        remaining -= sliceH;
       }
     }
 

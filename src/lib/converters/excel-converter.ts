@@ -43,10 +43,10 @@ export async function excelToCsv(file: File): Promise<ConversionResult> {
 
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) {
-      row.eachCell((cell) => headers.push(String(cell.value || '')));
+      row.eachCell({ includeEmpty: true }, (cell) => headers.push(String(cell.value || '')));
     } else {
       const rowData: Record<string, any> = {};
-      row.eachCell((cell, colNumber) => {
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         rowData[headers[colNumber - 1] || `Col${colNumber}`] = cell.value;
       });
       data.push(rowData);
@@ -105,9 +105,10 @@ export async function excelToHtml(file: File): Promise<ConversionResult> {
 <head><meta charset="utf-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;padding:20px}
-table{border-collapse:collapse}
-td,th{padding:4px 6px;overflow:hidden;text-overflow:ellipsis}
+body{font-family:Arial,sans-serif;padding:20px;background:#f8fafc}
+table{border-collapse:collapse;border:1px solid #cbd5e1;background:#fff;margin-bottom:20px}
+td,th{border:1px solid #cbd5e1;padding:6px 10px;min-width:60px;overflow:hidden;text-overflow:ellipsis}
+th{background-color:#f1f5f9;font-weight:bold}
 </style></head><body>`;
 
   workbook.eachSheet((sheet) => {
@@ -140,8 +141,7 @@ td,th{padding:4px 6px;overflow:hidden;text-overflow:ellipsis}
     sheet.eachRow((row) => {
       if (row.height) rowHeights[row.number] = `${row.height}px`;
 
-      html += '<tr>';
-      if (row.height) html += ` style="height:${row.height}px"`;
+      html += `<tr${row.height ? ` style="height:${row.height}px"` : ''}>`;
 
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         const cellKey = `${row.number}:${colNumber}`;
@@ -220,7 +220,11 @@ td,th{padding:4px 6px;overflow:hidden;text-overflow:ellipsis}
         let cellValue: any = cell.value;
         if (cellValue === null || cellValue === undefined) cellValue = '';
         if (typeof cellValue === 'object') {
-          cellValue = (cellValue as any).text ?? (cellValue as any).result ?? String(cellValue);
+          if (Array.isArray((cellValue as any).richText)) {
+            cellValue = (cellValue as any).richText.map((t: any) => t.text || '').join('');
+          } else {
+            cellValue = (cellValue as any).result ?? (cellValue as any).formula ?? (cellValue as any).text ?? String(cellValue);
+          }
         }
 
         html += `<${tag}${colSpanStr}${rowSpanStr}${styleStr}>${String(cellValue)}</${tag}>`;
@@ -253,10 +257,10 @@ export async function excelToJson(file: File): Promise<ConversionResult> {
 
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) {
-      row.eachCell((cell) => headers.push(String(cell.value || '')));
+      row.eachCell({ includeEmpty: true }, (cell) => headers.push(String(cell.value || '')));
     } else {
       const rowData: Record<string, any> = {};
-      row.eachCell((cell, colNumber) => {
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         rowData[headers[colNumber - 1] || `Col${colNumber}`] = cell.value;
       });
       data.push(rowData);
