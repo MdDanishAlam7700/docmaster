@@ -1,6 +1,7 @@
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { ConversionResult, ConverterOptions } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
+import { Document, Packer, Paragraph, TextRun, PageBreak } from 'docx';
 export { docxToHtml, docxToText, htmlToDocx, textToDocx, textToHtml } from './docx-converter';
 export { csvToExcel, excelToCsv, excelToHtml, excelToJson, htmlTableToExcel } from './excel-converter';
 export { resizeImage, compressImage, cropImage, convertImageFormat } from './image-converter';
@@ -262,6 +263,96 @@ export async function flattenPdf(file: File): Promise<ConversionResult> {
     file: new Blob([new Uint8Array(flattened)], { type: 'application/pdf' }),
     filename: changeExtension(file.name, 'pdf'),
     mimeType: 'application/pdf',
+  };
+}
+
+export async function pdfToDocx(file: File): Promise<ConversionResult> {
+  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
+  GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+
+  const bytes = await file.arrayBuffer();
+  const pdf = await getDocument({ data: bytes }).promise;
+  const paragraphs: Paragraph[] = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    if (p > 1) {
+      paragraphs.push(new Paragraph({ children: [new PageBreak()] }));
+    }
+
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const items: { str: string; x: number; y: number; height: number; fontName: string }[] = [];
+
+    for (const item of content.items) {
+      const it = item as any;
+      if (!it.str) continue;
+      items.push({
+        str: it.str,
+        x: it.transform[4],
+        y: it.transform[5],
+        height: it.height || 12,
+        fontName: it.fontName || '',
+      });
+    }
+
+    const Y_THRESHOLD = 3;
+    const lines: typeof items[] = [];
+    const sorted = [...items].sort((a, b) => b.y - a.y);
+
+    for (const item of sorted) {
+      let placed = false;
+      for (const line of lines) {
+        if (Math.abs(line[0].y - item.y) < Y_THRESHOLD) {
+          line.push(item);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) lines.push([item]);
+    }
+
+    for (const line of lines) {
+      line.sort((a, b) => a.x - b.x);
+    }
+
+    for (const line of lines) {
+      const textRuns: TextRun[] = [];
+      for (const item of line) {
+        const fontName = item.fontName;
+        const isBold = /\b(Bold|BD|Black)\b/i.test(fontName);
+        const isItalic = /\b(Italic|It|Oblique)\b/i.test(fontName);
+        const cleanFont = fontName
+          .replace(/^[A-Za-z0-9]+\+/, '')
+          .replace(/-(Bold|Italic|Regular|BD|It|Oblique|Black|MT).*$/i, '')
+          .replace(/[_-]/g, ' ')
+          .trim();
+
+        const size = Math.round((item.height || 12) * 2);
+
+        textRuns.push(new TextRun({
+          text: item.str,
+          font: cleanFont || undefined,
+          size: Math.max(size, 12),
+          bold: isBold,
+          italics: isItalic,
+        }));
+      }
+      if (textRuns.length > 0) {
+        paragraphs.push(new Paragraph({ children: textRuns }));
+      }
+    }
+  }
+
+  if (paragraphs.length === 0) {
+    paragraphs.push(new Paragraph({ children: [new TextRun({ text: '' })] }));
+  }
+
+  const doc = new Document({ sections: [{ children: paragraphs }] });
+  const buffer = await Packer.toBuffer(doc);
+  return {
+    file: new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+    filename: changeExtension(file.name, 'docx'),
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   };
 }
 

@@ -7,24 +7,33 @@ import { UploadedFile, ConversionResult } from '@/lib/types';
 export default function MarkdownToHtmlPage() {
   const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
     const md = await files[0].file.text();
-    const html = md
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/`(.+?)`/g, '<code>$1</code>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/\n/g, '<br>');
+    const markdownIt = (await import('markdown-it')).default;
+    const mdParser = new markdownIt({ html: true, linkify: true, typographer: true });
+    const bodyHtml = mdParser.render(md);
     const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${files[0].name}</title>
-  <style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px;line-height:1.6;}h1,h2,h3{margin-top:24px;}code{background:#f4f4f4;padding:2px 6px;border-radius:3px;}li{margin-left:20px;}</style>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:800px;margin:0 auto;padding:20px;line-height:1.6;color:#333}
+    pre{background:#f4f4f4;padding:16px;border-radius:6px;overflow-x:auto;margin:16px 0}
+    code{background:#f4f4f4;padding:2px 6px;border-radius:3px;font-size:0.9em}
+    pre code{background:none;padding:0}
+    table{border-collapse:collapse;width:100%;margin:16px 0}
+    th,td{border:1px solid #ddd;padding:8px;text-align:left}
+    th{background:#f5f5f5;font-weight:bold}
+    img{max-width:100%}
+    blockquote{border-left:4px solid #ddd;margin:16px 0;padding:8px 16px;color:#666}
+    ul,ol{margin:8px 0;padding-left:24px}
+    h1,h2,h3,h4{margin-top:24px;margin-bottom:12px}
+    a{color:#0066cc}
+    @media(prefers-color-scheme:dark){body{background:#1a1a1a;color:#e0e0e0}pre,code{background:#2a2a2a}th{background:#2a2a2a}td,th{border-color:#444}blockquote{border-left-color:#555;color:#aaa}a{color:#66b0ff}}
+  </style>
 </head>
-<body>${html}</body>
+<body>${bodyHtml}</body>
 </html>`;
     return {
       file: new Blob([fullHtml], { type: 'text/html' }),
@@ -36,7 +45,7 @@ export default function MarkdownToHtmlPage() {
   return (
     <ToolPageTemplate
       title="Markdown to HTML"
-      description="Convert Markdown to HTML web page."
+      description="Convert Markdown to HTML web page with full syntax support."
       icon={<FileText className="h-7 w-7" />}
       multiple={false}
       accept={{ 'text/markdown': ['.md'], 'text/plain': ['.md'] }}
