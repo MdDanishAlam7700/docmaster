@@ -80,11 +80,17 @@ function parseStyle(style: string): CellStyle {
   return s;
 }
 
+function normalizeHex(c: string): string {
+  let h = c.replace('#', '');
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return h.toUpperCase();
+}
+
 function borderStyle(s?: string) {
   if (!s) return undefined;
   const parts = s.split(' ');
   const size = parts[0] === '3px' ? 3 : parts[0] === '2px' ? 2 : 1;
-  const color = parts[2] || '#ccc';
+  const color = normalizeHex(parts[2] || 'ccc');
   return { style: BorderStyle.SINGLE, size, color };
 }
 
@@ -138,7 +144,7 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
                 text: cellText,
                 bold: cellStyle.bold,
                 italics: cellStyle.italic,
-                color: cellStyle.color,
+                color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
                 size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
               }));
             }
@@ -212,11 +218,7 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
             }
 
             if (cellStyle.bgColor) {
-              let colorVal = cellStyle.bgColor;
-              if (colorVal.startsWith('#')) colorVal = colorVal.slice(1);
-              if (colorVal.length === 3) colorVal = colorVal[0]+colorVal[0]+colorVal[1]+colorVal[1]+colorVal[2]+colorVal[2];
-              if (colorVal.length === 6) colorVal = colorVal.toUpperCase();
-              docxCellOptions.shading = { type: ShadingType.CLEAR, fill: colorVal };
+              docxCellOptions.shading = { type: ShadingType.CLEAR, fill: normalizeHex(cellStyle.bgColor) };
             }
 
             if (cellStyle.align) {
