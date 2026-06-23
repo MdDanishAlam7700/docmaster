@@ -45,7 +45,7 @@ Word counter, QR code generator — 2 tools.
 
 ## 🚀 Live Demo
 
-**[docmaster.vercel.app](https://docmaster.vercel.app)**
+**[docmaster-five.vercel.app](https://docmaster-five.vercel.app)**
 
 ---
 
@@ -73,8 +73,8 @@ Word counter, QR code generator — 2 tools.
 
 ```bash
 # Clone the repository
-git clone https://github.com/MdDanishAlam7700/docmaster.git
-cd docmaster
+git clone https://github.com/MdDanishAlam7700/docmaster.git "Doc Master"
+cd "Doc Master"
 
 # Install dependencies
 npm install
