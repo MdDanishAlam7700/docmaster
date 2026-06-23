@@ -73,8 +73,8 @@ Word counter, QR code generator — 2 tools.
 
 ```bash
 # Clone the repository
-git clone https://github.com/MdDanishAlam7700/Doc Master.git
-cd Doc Master
+git clone https://github.com/MdDanishAlam7700/docmaster.git
+cd docmaster
 
 # Install dependencies
 npm install
@@ -119,7 +119,7 @@ src/
 
 The app is deployed on **Vercel** — every push to `main` auto-deploys.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/MdDanishAlam7700/Doc Master)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/MdDanishAlam7700/docmaster)
 
 ---
 
