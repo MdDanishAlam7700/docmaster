@@ -215,7 +215,7 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
               let colorVal = cellStyle.bgColor;
               if (colorVal.startsWith('#')) colorVal = colorVal.slice(1);
               if (colorVal.length === 3) colorVal = colorVal[0]+colorVal[0]+colorVal[1]+colorVal[1]+colorVal[2]+colorVal[2];
-              if (colorVal.length === 6) colorVal = 'FF' + colorVal.toUpperCase();
+              if (colorVal.length === 6) colorVal = colorVal.toUpperCase();
               docxCellOptions.shading = { type: ShadingType.CLEAR, fill: colorVal };
             }
 
