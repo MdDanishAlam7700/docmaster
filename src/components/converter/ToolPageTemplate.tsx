@@ -6,7 +6,8 @@ import { ResultPanel } from './ResultPanel';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ConversionProgress, ConversionResult, ConverterOptions, UploadedFile } from '@/lib/types';
-import { Zap } from 'lucide-react';
+import { Zap, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 interface ToolPageTemplateProps {
   title: string;
@@ -70,6 +71,13 @@ export function ToolPageTemplate({
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Home
+      </Link>
       <div className="text-center space-y-2">
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-primary/80 to-primary shadow-lg mb-2 [&_svg]:text-primary-foreground">
           {icon}
