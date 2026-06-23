@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType } from 'docx';
 import * as mammoth from 'mammoth';
 import { ConversionResult } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
@@ -42,16 +42,73 @@ export async function docxToText(file: File): Promise<ConversionResult> {
   };
 }
 
+interface CellStyle {
+  bold?: boolean;
+  italic?: boolean;
+  color?: string;
+  bgColor?: string;
+  fontSize?: string;
+  fontFamily?: string;
+  align?: string;
+  valign?: string;
+  borderTop?: string;
+  borderBottom?: string;
+  borderLeft?: string;
+  borderRight?: string;
+}
+
+function parseStyle(style: string): CellStyle {
+  const s: CellStyle = {};
+  if (!style) return s;
+  const props = style.split(';');
+  for (const p of props) {
+    const [k, v] = p.split(':').map(x => x.trim().toLowerCase());
+    if (!k || !v) continue;
+    if (k === 'font-weight' && v === 'bold') s.bold = true;
+    if (k === 'font-style' && v === 'italic') s.italic = true;
+    if (k === 'color') s.color = v;
+    if (k === 'background-color') s.bgColor = v;
+    if (k === 'font-size') s.fontSize = v;
+    if (k === 'font-family') s.fontFamily = v;
+    if (k === 'text-align') s.align = v;
+    if (k === 'vertical-align') s.valign = v;
+    if (k === 'border-top') s.borderTop = v;
+    if (k === 'border-bottom') s.borderBottom = v;
+    if (k === 'border-left') s.borderLeft = v;
+    if (k === 'border-right') s.borderRight = v;
+  }
+  return s;
+}
+
+function borderStyle(s?: string) {
+  if (!s) return undefined;
+  const parts = s.split(' ');
+  const size = parts[0] === '3px' ? 3 : parts[0] === '2px' ? 2 : 1;
+  const color = parts[2] || '#ccc';
+  return { style: BorderStyle.SINGLE, size, color };
+}
+
+function docxAlign(align?: string) {
+  if (!align) return undefined;
+  const map: any = {
+    left: AlignmentType.LEFT,
+    center: AlignmentType.CENTER,
+    right: AlignmentType.RIGHT,
+    justify: AlignmentType.JUSTIFIED,
+  };
+  return map[align];
+}
+
 export async function htmlToDocx(html: string, filename: string): Promise<ConversionResult> {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
-  const paragraphs: Paragraph[] = [];
+  const children: (Paragraph | Table)[] = [];
 
   function processNode(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || '';
       if (text.trim()) {
-        paragraphs.push(new Paragraph({
+        children.push(new Paragraph({
           children: [new TextRun({ text })],
         }));
       }
@@ -59,9 +116,129 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
       const el = node as HTMLElement;
       const tag = el.tagName.toLowerCase();
 
-      if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+      if (tag === 'table') {
+        const rows = Array.from(el.querySelectorAll('tr'));
+        if (rows.length === 0) return;
+
+        const tableRows: TableRow[] = [];
+
+        for (const row of rows) {
+          const cells = Array.from(row.querySelectorAll('td, th'));
+          const docxCells: TableCell[] = [];
+
+          for (const cell of cells) {
+            const cellStyle = parseStyle(cell.getAttribute('style') || '');
+            const colSpan = parseInt(cell.getAttribute('colspan') || '1');
+            const rowSpan = parseInt(cell.getAttribute('rowspan') || '1');
+            const cellText = cell.textContent || '';
+
+            const runs: TextRun[] = [];
+            if (cellText.trim()) {
+              runs.push(new TextRun({
+                text: cellText,
+                bold: cellStyle.bold,
+                italics: cellStyle.italic,
+                color: cellStyle.color,
+                size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
+              }));
+            }
+
+            const cellChildren: (Paragraph | Table)[] = [];
+            // Process child elements in the cell (paragraphs, lists, etc.)
+            const cellSubNodes = Array.from(cell.childNodes);
+            if (cellSubNodes.length === 1 && cellSubNodes[0].nodeType === Node.TEXT_NODE) {
+              cellChildren.push(new Paragraph({
+                children: runs,
+                alignment: docxAlign(cellStyle.align),
+              }));
+            } else {
+              let hasContent = false;
+              for (const child of cellSubNodes) {
+                if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
+                  hasContent = true;
+                  cellChildren.push(new Paragraph({
+                    children: [new TextRun({ text: child.textContent || '' })],
+                    alignment: docxAlign(cellStyle.align),
+                  }));
+                } else if (child.nodeType === Node.ELEMENT_NODE) {
+                  hasContent = true;
+                  const childEl = child as HTMLElement;
+                  const childTag = childEl.tagName.toLowerCase();
+                  if (['p', 'span', 'b', 'strong', 'i', 'em', 'br', 'div'].includes(childTag)) {
+                    const childRuns: TextRun[] = [];
+                    childEl.childNodes.forEach(cn => {
+                      if (cn.nodeType === Node.TEXT_NODE && (cn.textContent || '').trim()) {
+                        childRuns.push(new TextRun({ text: cn.textContent || '' }));
+                      }
+                    });
+                    if (childRuns.length > 0) {
+                      cellChildren.push(new Paragraph({
+                        children: childRuns,
+                        alignment: docxAlign(cellStyle.align),
+                      }));
+                    }
+                  }
+                }
+              }
+              if (!hasContent && runs.length > 0) {
+                cellChildren.push(new Paragraph({
+                  children: runs,
+                  alignment: docxAlign(cellStyle.align),
+                }));
+              }
+            }
+
+            if (cellChildren.length === 0) {
+              cellChildren.push(new Paragraph({ children: [] }));
+            }
+
+            const docxCellOptions: any = {
+              children: cellChildren,
+              columnSpan: colSpan,
+              rowSpan: rowSpan,
+            };
+
+            const borders: any = {};
+            const topB = borderStyle(cellStyle.borderTop);
+            const bottomB = borderStyle(cellStyle.borderBottom);
+            const leftB = borderStyle(cellStyle.borderLeft);
+            const rightB = borderStyle(cellStyle.borderRight);
+            if (topB) borders.top = topB;
+            if (bottomB) borders.bottom = bottomB;
+            if (leftB) borders.left = leftB;
+            if (rightB) borders.right = rightB;
+            if (Object.keys(borders).length > 0) {
+              docxCellOptions.borders = borders;
+            }
+
+            if (cellStyle.bgColor) {
+              let colorVal = cellStyle.bgColor;
+              if (colorVal.startsWith('#')) colorVal = colorVal.slice(1);
+              if (colorVal.length === 3) colorVal = colorVal[0]+colorVal[0]+colorVal[1]+colorVal[1]+colorVal[2]+colorVal[2];
+              if (colorVal.length === 6) colorVal = 'FF' + colorVal.toUpperCase();
+              docxCellOptions.shading = { type: ShadingType.CLEAR, fill: colorVal };
+            }
+
+            if (cellStyle.align) {
+              docxCellOptions.verticalAlign = cellStyle.valign === 'top' ? 'top' as any : cellStyle.valign === 'bottom' ? 'bottom' as any : 'center' as any;
+            }
+
+            docxCells.push(new TableCell(docxCellOptions));
+          }
+
+          tableRows.push(new TableRow({ children: docxCells }));
+        }
+
+        // Borders for the whole table
+        if (tableRows.length > 0) {
+          children.push(new Table({
+            rows: tableRows,
+            width: { size: 100, type: WidthType.PERCENTAGE },
+          }));
+        }
+      } else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
         const level = parseInt(tag[1]) - 1;
-        paragraphs.push(new Paragraph({
+        children.push(new Paragraph({
           heading: [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6][level],
           children: [new TextRun({ text: el.textContent || '', bold: true })],
         }));
@@ -80,10 +257,10 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
           }
         });
         if (runs.length > 0) {
-          paragraphs.push(new Paragraph({ children: runs }));
+          children.push(new Paragraph({ children: runs }));
         }
       } else if (tag === 'br') {
-        paragraphs.push(new Paragraph({ children: [] }));
+        children.push(new Paragraph({ children: [] }));
       } else {
         el.childNodes.forEach(processNode);
       }
@@ -92,14 +269,14 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
 
   doc.body.childNodes.forEach(processNode);
 
-  if (paragraphs.length === 0) {
-    paragraphs.push(new Paragraph({
+  if (children.length === 0) {
+    children.push(new Paragraph({
       children: [new TextRun({ text: doc.body.textContent || '' })],
     }));
   }
 
   const docx = new Document({
-    sections: [{ children: paragraphs }],
+    sections: [{ children }],
   });
 
   const buffer = await Packer.toBuffer(docx);

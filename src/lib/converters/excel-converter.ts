@@ -17,7 +17,6 @@ export async function csvToExcel(file: File): Promise<ConversionResult> {
       sheet.addRow(headers.map(h => row[h]));
     });
 
-    // Style header row
     const headerRow = sheet.getRow(1);
     headerRow.font = { bold: true };
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
@@ -62,6 +61,40 @@ export async function excelToCsv(file: File): Promise<ConversionResult> {
   };
 }
 
+function formatHex(argb?: string): string {
+  if (!argb) return '';
+  return '#' + (argb.length > 6 ? argb.slice(2) : argb);
+}
+
+function cssColor(color: any): string {
+  if (!color) return '';
+  if (typeof color === 'string') return color;
+  if (color.argb) return formatHex(color.argb);
+  if (color.rgb) return `rgb(${color.rgb.r},${color.rgb.g},${color.rgb.b})`;
+  if (color.theme !== undefined) return '';
+  return '';
+}
+
+function buildBorderStyle(border: any, side: string): string {
+  if (!border || !border[side]) return '';
+  const s = border[side];
+  const style = s.style || '';
+  const color = cssColor(s.color);
+  const widthMap: Record<string, string> = {
+    thin: '1px', medium: '2px', thick: '3px',
+    hair: '0.5px', dotted: '1px', dashed: '1px',
+    'double': '3px',
+  };
+  const w = widthMap[style] || '1px';
+  const styleMap: Record<string, string> = {
+    thin: 'solid', medium: 'solid', thick: 'solid',
+    hair: 'solid', dotted: 'dotted', dashed: 'dashed',
+    'double': 'double',
+  };
+  const s2 = styleMap[style] || 'solid';
+  return `${w} ${s2} ${color || '#ccc'}`;
+}
+
 export async function excelToHtml(file: File): Promise<ConversionResult> {
   const bytes = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
@@ -69,23 +102,133 @@ export async function excelToHtml(file: File): Promise<ConversionResult> {
 
   let html = `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><style>
-table{border-collapse:collapse;width:100%;margin:16px 0}
-th,td{border:1px solid #ddd;padding:8px;text-align:left}
-th{background:#f5f5f5;font-weight:bold}
-tr:nth-child(even){background:#fafafa}
+<head><meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;padding:20px}
+table{border-collapse:collapse}
+td,th{padding:4px 6px;overflow:hidden;text-overflow:ellipsis}
 </style></head><body>`;
 
   workbook.eachSheet((sheet) => {
-    html += `<h2>${sheet.name}</h2><table>`;
+    const colWidths: Record<number, string> = {};
+    sheet.columns?.forEach((col, i) => {
+      if (col.width) colWidths[i + 1] = `${Math.round(col.width * 7)}px`;
+    });
+
+    const mergeRanges: Record<string, { rowspan: number; colspan: number }> = {};
+    const rowHeights: Record<number, string> = {};
+
+    if (sheet.hasMerges && (sheet as any)._merges) {
+      const merges = (sheet as any)._merges as Record<string, { model: { top: number; left: number; bottom: number; right: number } }>;
+      for (const key of Object.keys(merges)) {
+        const m = merges[key];
+        const startRow = m.model.top;
+        const startCol = m.model.left;
+        mergeRanges[`${startRow}:${startCol}`] = {
+          rowspan: m.model.bottom - m.model.top + 1,
+          colspan: m.model.right - m.model.left + 1,
+        };
+      }
+    }
+
+    const occupiedCells = new Set<string>();
+
+    html += `<h2 style="margin:0 0 8px 0">${sheet.name}</h2>`;
+    html += `<table style="min-width:${sheet.columnCount * 100}px">`;
+
     sheet.eachRow((row) => {
+      if (row.height) rowHeights[row.number] = `${row.height}px`;
+
       html += '<tr>';
-      row.eachCell((cell) => {
+      if (row.height) html += ` style="height:${row.height}px"`;
+
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const cellKey = `${row.number}:${colNumber}`;
+        if (occupiedCells.has(cellKey)) return;
+
+        const mergeKey = `${row.number}:${colNumber}`;
+        const merge = mergeRanges[mergeKey];
+        const isMerged = cell.isMerged;
+        const masterAddr = cell.master ? cell.master.address : null;
+
+        let colspan = 1;
+        let rowspan = 1;
+        let skipRender = false;
+
+        if (merge) {
+          colspan = merge.colspan;
+          rowspan = merge.rowspan;
+          for (let r = 0; r < merge.rowspan; r++) {
+            for (let c = 0; c < merge.colspan; c++) {
+              if (r !== 0 || c !== 0) {
+                occupiedCells.add(`${row.number + r}:${colNumber + c}`);
+              }
+            }
+          }
+        } else if (cell.isMerged && masterAddr) {
+          const parts = masterAddr.match(/([A-Z]+)(\d+)/);
+          if (parts) {
+            const mCol = parts[1];
+            const mRow = parseInt(parts[2]);
+            occupiedCells.add(cellKey);
+            skipRender = true;
+          }
+        }
+
+        if (skipRender) return;
+
         const tag = row.number === 1 ? 'th' : 'td';
-        html += `<${tag}>${cell.value || ''}</${tag}>`;
+        const font = cell.font || {};
+        const fill = cell.fill || {};
+        const border = cell.border || {};
+        const alignment = cell.alignment || {};
+
+        const styles: string[] = [];
+
+        if (font.name) styles.push(`font-family:${font.name}`);
+        if (font.size) styles.push(`font-size:${font.size}pt`);
+        if (font.bold) styles.push('font-weight:bold');
+        if (font.italic) styles.push('font-style:italic');
+        if (font.color) {
+          const c = cssColor(font.color);
+          if (c) styles.push(`color:${c}`);
+        }
+
+        if (fill.type === 'pattern' && fill.pattern === 'solid' && fill.fgColor) {
+          const c = cssColor(fill.fgColor);
+          if (c) styles.push(`background-color:${c}`);
+        }
+
+        const topB = buildBorderStyle(border, 'top');
+        const bottomB = buildBorderStyle(border, 'bottom');
+        const leftB = buildBorderStyle(border, 'left');
+        const rightB = buildBorderStyle(border, 'right');
+        if (topB) styles.push(`border-top:${topB}`);
+        if (bottomB) styles.push(`border-bottom:${bottomB}`);
+        if (leftB) styles.push(`border-left:${leftB}`);
+        if (rightB) styles.push(`border-right:${rightB}`);
+
+        if (alignment.horizontal) styles.push(`text-align:${alignment.horizontal}`);
+        if (alignment.vertical) styles.push(`vertical-align:${alignment.vertical}`);
+        if (alignment.wrapText) styles.push('white-space:normal;word-wrap:break-word');
+
+        let colSpanStr = colspan > 1 ? ` colspan="${colspan}"` : '';
+        let rowSpanStr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+        let styleStr = styles.length > 0 ? ` style="${styles.join(';')}"` : '';
+
+        let cellValue: any = cell.value;
+        if (cellValue === null || cellValue === undefined) cellValue = '';
+        if (typeof cellValue === 'object') {
+          cellValue = (cellValue as any).text ?? (cellValue as any).result ?? String(cellValue);
+        }
+
+        html += `<${tag}${colSpanStr}${rowSpanStr}${styleStr}>${String(cellValue)}</${tag}>`;
       });
+
       html += '</tr>';
     });
+
     html += '</table>';
   });
 

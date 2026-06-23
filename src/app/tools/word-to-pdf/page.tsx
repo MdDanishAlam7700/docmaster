@@ -3,28 +3,20 @@
 import { ToolPageTemplate } from '@/components/converter/ToolPageTemplate';
 import { FileText } from 'lucide-react';
 import { docxToHtml } from '@/lib/converters/docx-converter';
+import { renderHtmlToPdf } from '@/lib/converters/html-to-pdf';
 import { UploadedFile, ConversionResult } from '@/lib/types';
 
 export default function WordToPdfPage() {
   const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
     const htmlResult = await docxToHtml(files[0].file);
     const html = await htmlResult.file.text();
-    const { default: jsPDF } = await import('jspdf');
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-    const lines = pdf.splitTextToSize(html.replace(/<[^>]*>/g, ''), 180);
-    pdf.text(lines, 15, 15);
-    const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
-    return {
-      file: blob,
-      filename: files[0].name.replace(/\.[^.]+$/, '.pdf'),
-      mimeType: 'application/pdf',
-    };
+    return renderHtmlToPdf(html, files[0].name);
   };
 
   return (
     <ToolPageTemplate
       title="Word to PDF"
-      description="Convert Word documents to PDF format."
+      description="Convert Word documents to PDF with full formatting preserved."
       icon={<FileText className="h-7 w-7" />}
       multiple={false}
       accept={{
