@@ -68,20 +68,23 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function downloadMultipleFiles(blobs: { file: Blob; filename: string }[]) {
+export async function downloadMultipleFiles(blobs: { file: Blob; filename: string }[]) {
   if (blobs.length === 1) {
     downloadBlob(blobs[0].file, blobs[0].filename);
     return;
   }
-  import('jszip').then(({ default: JSZip }) => {
+  try {
+    const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
     blobs.forEach(({ file, filename }) => {
       zip.file(filename, file);
     });
-    zip.generateAsync({ type: 'blob' }).then((content) => {
-      downloadBlob(content, 'converted-files.zip');
-    });
-  });
+    const content = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(content, 'converted-files.zip');
+  } catch (err) {
+    console.error('Failed to create zip file:', err);
+    throw new Error('Failed to package files. Try downloading them individually.');
+  }
 }
 
 export const ACCEPTED_IMAGE_TYPES = 'image/jpeg,image/png,image/gif,image/webp,image/bmp,image/svg+xml,image/tiff';

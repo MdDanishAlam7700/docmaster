@@ -12,7 +12,18 @@ export default function ExtractPagesPage() {
   const [pages, setPages] = useState('1-3');
 
   const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
-    const pageNums = pages.split(',').map(p => parseInt(p.trim())).filter(n => !isNaN(n));
+    const pageNums = pages.split(',').flatMap(part => {
+      const trimmed = part.trim();
+      if (trimmed.includes('-')) {
+        const [rawStart, rawEnd] = trimmed.split('-').map(n => parseInt(n.trim()));
+        if (isNaN(rawStart) || isNaN(rawEnd)) return [];
+        const start = Math.min(rawStart, rawEnd);
+        const end = Math.max(rawStart, rawEnd);
+        return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+      }
+      const n = parseInt(trimmed);
+      return isNaN(n) ? [] : [n];
+    });
     return extractPages(files[0].file, pageNums);
   };
 

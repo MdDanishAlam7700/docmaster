@@ -2,11 +2,11 @@ import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { ConversionResult, ConverterOptions } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
 import { Document, Packer, Paragraph, TextRun, PageBreak } from 'docx';
-export { docxToHtml, docxToText, htmlToDocx, textToDocx, textToHtml } from './docx-converter';
-export { csvToExcel, excelToCsv, excelToHtml, excelToJson, htmlTableToExcel } from './excel-converter';
+export { docxToHtml, docxToText, htmlToDocx, textToDocx, textToHtml, docxToExcel } from './docx-converter';
+export { csvToExcel, excelToCsv, excelToHtml, excelToJson, htmlTableToExcel, pdfToExcel } from './excel-converter';
 export { resizeImage, compressImage, cropImage, convertImageFormat } from './image-converter';
 
-const PDFJS_VERSION = '4.10.38';
+const PDFJS_VERSION = '6.0.227';
 
 function pdfToBlob(bytes: Uint8Array): Blob {
   return new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
@@ -63,8 +63,9 @@ export async function compressPdf(file: File, level: 'low' | 'medium' | 'high'):
   const bytes = await file.arrayBuffer();
   const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const compressed = await pdf.save({
-    useObjectStreams: level === 'high',
+    useObjectStreams: level !== 'low',
     addDefaultPage: false,
+    objectsPerTick: level === 'high' ? 100 : 50,
   });
   return {
     file: new Blob([new Uint8Array(compressed)], { type: 'application/pdf' }),
@@ -123,7 +124,11 @@ export async function cropPdf(file: File, top: number, right: number, bottom: nu
   const pages = pdf.getPages();
   pages.forEach(page => {
     const { width, height } = page.getSize();
-    page.setCropBox(left, bottom, width - left - right, height - top - bottom);
+    const cropLeft = Math.max(0, left);
+    const cropBottom = Math.max(0, bottom);
+    const cropWidth = Math.max(1, width - left - right);
+    const cropHeight = Math.max(1, height - top - bottom);
+    page.setCropBox(cropLeft, cropBottom, cropWidth, cropHeight);
   });
   const cropped = await pdf.save();
   return {
@@ -173,13 +178,24 @@ export async function addWatermark(file: File, text: string, opacity: number = 0
 
   pages.forEach(page => {
     const { width, height } = page.getSize();
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+    const textHeight = fontSize;
+    
+    const angle = 45;
+    const rad = (angle * Math.PI) / 180;
+    
+    // Mathematically center the rotated text block
+    const x = (width - Math.cos(rad) * textWidth + Math.sin(rad) * textHeight) / 2;
+    const y = (height - Math.sin(rad) * textWidth - Math.cos(rad) * textHeight) / 2;
+
     page.drawText(text, {
-      x: width / 2 - (font.widthOfTextAtSize(text, fontSize)) / 2,
-      y: height / 2,
+      x,
+      y,
       size: fontSize,
       font,
       color: rgb(0.7, 0.7, 0.7),
       opacity,
+      rotate: degrees(angle),
     });
   });
 
@@ -212,7 +228,7 @@ export async function ocrPdf(
   onProgress?: (current: number, total: number) => void
 ): Promise<ConversionResult> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-  GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+  GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
   const { createWorker } = await import('tesseract.js');
 
   const bytes = await file.arrayBuffer();
@@ -268,7 +284,7 @@ export async function flattenPdf(file: File): Promise<ConversionResult> {
 
 export async function pdfToDocx(file: File): Promise<ConversionResult> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-  GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+  GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
   const bytes = await file.arrayBuffer();
   const pdf = await getDocument({ data: bytes }).promise;
@@ -358,7 +374,7 @@ export async function pdfToDocx(file: File): Promise<ConversionResult> {
 
 export async function extractPdfText(file: File): Promise<ConversionResult> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-  GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+  GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
   const bytes = await file.arrayBuffer();
   const pdf = await getDocument({ data: bytes }).promise;
@@ -380,7 +396,7 @@ export async function extractPdfText(file: File): Promise<ConversionResult> {
 
 export async function pdfToImages(file: File, format: 'png' | 'jpeg' = 'png', quality: number = 0.95, options?: ConverterOptions): Promise<ConversionResult[]> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-  GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+  GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
   const bytes = await file.arrayBuffer();
   const pdf = await getDocument({ data: bytes }).promise;
@@ -412,6 +428,44 @@ export async function pdfToImages(file: File, format: 'png' | 'jpeg' = 'png', qu
       mimeType,
     });
     options?.onProgress?.(Math.round((i / total) * 100), `Rendering page ${i} of ${total}`);
+  }
+
+  return results;
+}
+
+export async function pdfToSvg(file: File, options?: ConverterOptions): Promise<ConversionResult[]> {
+  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
+  GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
+
+  const bytes = await file.arrayBuffer();
+  const pdf = await getDocument({ data: bytes }).promise;
+  const results: ConversionResult[] = [];
+  const total = pdf.numPages;
+
+  for (let i = 1; i <= total; i++) {
+    if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2 });
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context is not available in this browser.');
+
+    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+    
+    const imgData = canvas.toDataURL('image/png');
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewport.width} ${viewport.height}" width="${viewport.width}" height="${viewport.height}">
+  <image href="${imgData}" width="${viewport.width}" height="${viewport.height}"/>
+</svg>`;
+    
+    results.push({
+      file: new Blob([svgString], { type: 'image/svg+xml' }),
+      filename: `${changeExtension(file.name, '')}_page-${i}.svg`,
+      mimeType: 'image/svg+xml',
+    });
+    options?.onProgress?.(Math.round((i / total) * 100), `Rendering SVG page ${i} of ${total}`);
   }
 
   return results;

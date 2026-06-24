@@ -3,11 +3,11 @@
 import { ToolPageTemplate } from '@/components/converter/ToolPageTemplate';
 import { Image } from 'lucide-react';
 import { pdfToImages } from '@/lib/converters';
-import { UploadedFile, ConversionResult } from '@/lib/types';
+import { UploadedFile, ConversionResult, ConverterOptions } from '@/lib/types';
 
 export default function PdfToJpgPage() {
-  const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult | ConversionResult[]> => {
-    return pdfToImages(files[0].file, 'jpeg');
+  const handleConvert = async (files: UploadedFile[], opts?: ConverterOptions): Promise<ConversionResult | ConversionResult[]> => {
+    return pdfToImages(files[0].file, 'jpeg', 0.95, opts);
   };
 
   return (

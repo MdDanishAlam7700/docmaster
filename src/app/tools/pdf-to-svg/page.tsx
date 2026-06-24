@@ -2,11 +2,12 @@
 
 import { ToolPageTemplate } from '@/components/converter/ToolPageTemplate';
 import { FileCode } from 'lucide-react';
-import { UploadedFile, ConversionResult } from '@/lib/types';
+import { pdfToSvg } from '@/lib/converters';
+import { UploadedFile, ConversionResult, ConverterOptions } from '@/lib/types';
 
 export default function PdfToSvgPage() {
-  const handleConvert = async (_files: UploadedFile[]): Promise<ConversionResult> => {
-    throw new Error('PDF to SVG conversion requires server-side processing. Try the PDF to JPG or PDF to PNG tool instead.');
+  const handleConvert = async (files: UploadedFile[], opts?: ConverterOptions): Promise<ConversionResult[]> => {
+    return pdfToSvg(files[0].file, opts);
   };
 
   return (

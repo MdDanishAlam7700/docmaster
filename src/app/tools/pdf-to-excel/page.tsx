@@ -2,11 +2,12 @@
 
 import { ToolPageTemplate } from '@/components/converter/ToolPageTemplate';
 import { Table } from 'lucide-react';
-import { UploadedFile, ConversionResult } from '@/lib/types';
+import { pdfToExcel } from '@/lib/converters';
+import { UploadedFile, ConversionResult, ConverterOptions } from '@/lib/types';
 
 export default function PdfToExcelPage() {
-  const handleConvert = async (_files: UploadedFile[]): Promise<ConversionResult> => {
-    throw new Error('PDF to Excel requires complex table extraction logic not available in the browser. Try the PDF to Text tool and then import the text into Excel.');
+  const handleConvert = async (files: UploadedFile[], opts?: ConverterOptions): Promise<ConversionResult> => {
+    return pdfToExcel(files[0].file, opts);
   };
 
   return (

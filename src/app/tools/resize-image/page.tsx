@@ -35,6 +35,7 @@ export default function ResizeImagePage() {
                 id="width"
                 type="number"
                 min={1}
+                max={10000}
                 value={width}
                 onChange={(e) => setWidth(Number(e.target.value))}
               />
@@ -45,6 +46,7 @@ export default function ResizeImagePage() {
                 id="height"
                 type="number"
                 min={1}
+                max={10000}
                 value={height}
                 onChange={(e) => setHeight(Number(e.target.value))}
               />

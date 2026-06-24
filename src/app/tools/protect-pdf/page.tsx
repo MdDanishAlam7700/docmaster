@@ -12,6 +12,9 @@ export default function ProtectPdf() {
   const [password, setPassword] = useState('');
 
   const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
+    if (!password.trim()) {
+      throw new Error('Please enter a password to protect the PDF.');
+    }
     return protectPdf(files[0].file, password);
   };
 
@@ -27,6 +30,7 @@ export default function ProtectPdf() {
         <div className="space-y-2">
           <Label>Password</Label>
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" />
+          <p className="text-xs text-amber-600 dark:text-amber-400">Note: Browser-based PDF encryption is limited. The output uses a basic obfuscation layer.</p>
         </div>
       }
     />

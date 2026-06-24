@@ -2,19 +2,24 @@ import { ConversionResult } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
 
 type JimpMime = 'image/png' | 'image/jpeg' | 'image/bmp' | 'image/tiff' | 'image/x-ms-bmp' | 'image/gif';
+type OutputMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/bmp' | 'image/gif';
+
+const JIMP_MIME_MAP: Record<string, JimpMime> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', tiff: 'image/tiff', gif: 'image/gif' };
+const OUTPUT_MIME_MAP: Record<string, OutputMime> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', bmp: 'image/bmp', gif: 'image/gif' };
 
 function getJimpMime(ext: string): JimpMime {
-  const map: Record<string, JimpMime> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', tiff: 'image/tiff', gif: 'image/gif' };
-  return map[ext] || 'image/png';
+  return JIMP_MIME_MAP[ext] || 'image/png';
 }
 
-function getMimeForExt(ext: string): string {
-  const map: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', bmp: 'image/bmp', gif: 'image/gif' };
-  return map[ext] || 'image/png';
+function getMimeForExt(ext: string): OutputMime {
+  return OUTPUT_MIME_MAP[ext] || 'image/png';
 }
 
 function blobPart(data: ArrayBuffer | Uint8Array): ArrayBuffer {
-  return data instanceof Uint8Array ? data.buffer as ArrayBuffer : data;
+  if (data instanceof Uint8Array) {
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  }
+  return data;
 }
 
 function blobToPromise(canvas: HTMLCanvasElement, mime: string, quality?: number): Promise<Blob> {
@@ -50,7 +55,7 @@ export async function compressImage(file: File, quality: number = 80): Promise<C
   const isJpeg = ext === 'jpg' || ext === 'jpeg';
   const jimpMime: JimpMime = isJpeg ? 'image/jpeg' : 'image/png';
   const outputMime = isJpeg ? 'image/jpeg' : 'image/png';
-  const buffer = await image.getBuffer(jimpMime);
+  const buffer = await image.getBuffer(jimpMime, isJpeg ? { quality } as any : undefined);
   return {
     file: new Blob([blobPart(buffer as unknown as Uint8Array)], { type: outputMime }),
     filename: changeExtension(file.name, isJpeg ? 'jpg' : 'png'),

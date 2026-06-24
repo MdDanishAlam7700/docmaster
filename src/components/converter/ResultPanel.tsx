@@ -25,7 +25,10 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
       const url = URL.createObjectURL(result.file);
       setPreviewUrl(url);
       setPreviewType(result.mimeType);
-      return () => URL.revokeObjectURL(url);
+      return () => {
+        URL.revokeObjectURL(url);
+        setPreviewUrl(null);
+      };
     }
     setPreviewUrl(null);
   }, [result]);
@@ -162,7 +165,16 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
 function PreviewText({ url, preview }: { url: string; preview?: boolean }) {
   const [text, setText] = useState('');
   useEffect(() => {
-    fetch(url).then(r => r.text()).then(setText);
+    let cancelled = false;
+    const controller = new AbortController();
+    fetch(url, { signal: controller.signal })
+      .then(r => { if (!cancelled) return r.text(); })
+      .then(t => { if (!cancelled && t !== undefined) setText(t); })
+      .catch(() => { if (!cancelled) setText('[Preview unavailable]'); });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [url]);
   if (preview) {
     return <iframe srcDoc={text} className="w-full h-64 border-0" title="Preview" sandbox="" />;

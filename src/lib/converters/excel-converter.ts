@@ -1,6 +1,6 @@
 import * as ExcelJS from 'exceljs';
 import Papa from 'papaparse';
-import { ConversionResult } from '@/lib/types';
+import { ConversionResult, ConverterOptions } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
 
 export async function csvToExcel(file: File): Promise<ConversionResult> {
@@ -41,7 +41,7 @@ export async function excelToCsv(file: File): Promise<ConversionResult> {
   const data: Record<string, any>[] = [];
   const headers: string[] = [];
 
-  sheet.eachRow((row, rowNumber) => {
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) {
       row.eachCell({ includeEmpty: true }, (cell) => headers.push(String(cell.value || '')));
     } else {
@@ -249,7 +249,8 @@ th{background-color:#f1f5f9;font-weight:bold}
   workbook.eachSheet((sheet) => {
     let showGrid = true;
     if (sheet.views && sheet.views.length > 0) {
-      showGrid = sheet.views[0].showGridLines !== false;
+      const view = sheet.views[0];
+      showGrid = view ? (view as any).showGridLines !== false : true;
     }
 
     const defaultColW = sheet.properties?.defaultColWidth ? Math.round(sheet.properties.defaultColWidth * 8) : 80;
@@ -276,16 +277,22 @@ th{background-color:#f1f5f9;font-weight:bold}
     const mergeRanges: Record<string, { rowspan: number; colspan: number }> = {};
     const rowHeights: Record<number, string> = {};
 
-    if (sheet.hasMerges && (sheet as any)._merges) {
-      const merges = (sheet as any)._merges as Record<string, { model: { top: number; left: number; bottom: number; right: number } }>;
-      for (const key of Object.keys(merges)) {
-        const m = merges[key];
-        const startRow = m.model.top;
-        const startCol = m.model.left;
-        mergeRanges[`${startRow}:${startCol}`] = {
-          rowspan: m.model.bottom - m.model.top + 1,
-          colspan: m.model.right - m.model.left + 1,
-        };
+    if (sheet.hasMerges) {
+      // ExcelJS stores merge ranges in the internal _merges map (object keyed by range string)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mergesMap: Record<string, unknown> = (sheet as any)._merges || {};
+      for (const range of Object.keys(mergesMap)) {
+        const match = range.match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/);
+        if (match) {
+          const startCol = match[1].charCodeAt(0) - 65 + 1;
+          const startRow = parseInt(match[2]);
+          const endCol = match[3].charCodeAt(0) - 65 + 1;
+          const endRow = parseInt(match[4]);
+          mergeRanges[`${startRow}:${startCol}`] = {
+            rowspan: endRow - startRow + 1,
+            colspan: endCol - startCol + 1,
+          };
+        }
       }
     }
 
@@ -441,7 +448,7 @@ export async function excelToJson(file: File): Promise<ConversionResult> {
   const data: Record<string, any>[] = [];
   const headers: string[] = [];
 
-  sheet.eachRow((row, rowNumber) => {
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) {
       row.eachCell({ includeEmpty: true }, (cell) => headers.push(String(cell.value || '')));
     } else {
@@ -470,9 +477,10 @@ export async function htmlTableToExcel(html: string, filename: string): Promise<
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Sheet1');
 
-  const rows = table.querySelectorAll('tr');
-  rows.forEach((row) => {
-    const cells = row.querySelectorAll('td, th');
+  const rows = Array.from(table.children).filter(el => el.tagName === 'TBODY' ? Array.from(el.children) : [el]).flat();
+  const rowEls = table.querySelectorAll(':scope > tr, :scope > tbody > tr');
+  rowEls.forEach((row) => {
+    const cells = row.querySelectorAll(':scope > td, :scope > th');
     const rowData: any[] = [];
     cells.forEach((cell) => rowData.push(cell.textContent?.trim() || ''));
     sheet.addRow(rowData);
@@ -483,8 +491,114 @@ export async function htmlTableToExcel(html: string, filename: string): Promise<
 
   const buffer = await workbook.xlsx.writeBuffer();
   return {
-    file: new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    file: new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
     filename: changeExtension(filename, 'xlsx'),
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+}
+
+export async function pdfToExcel(
+  file: File,
+  options?: ConverterOptions
+): Promise<ConversionResult> {
+  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
+  const PDFJS_VERSION = '6.0.227';
+  GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
+
+  const bytes = await file.arrayBuffer();
+  const pdf = await getDocument({ data: bytes }).promise;
+  const totalPages = pdf.numPages;
+
+  const ExcelJS = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
+
+  for (let p = 1; p <= totalPages; p++) {
+    if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    options?.onProgress?.(Math.round((p / totalPages) * 100), `Processing page ${p} of ${totalPages}`);
+
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    
+    const items: { str: string; x: number; y: number; height: number }[] = [];
+    for (const item of content.items) {
+      const it = item as any;
+      if (!it.str || !it.str.trim()) continue;
+      items.push({
+        str: it.str,
+        x: it.transform[4],
+        y: it.transform[5],
+        height: it.height || 12,
+      });
+    }
+
+    const sheetName = `Page ${p}`;
+    const sheet = workbook.addWorksheet(sheetName);
+
+    if (items.length === 0) continue;
+
+    const Y_THRESHOLD = 4;
+    const rowClusters: typeof items[] = [];
+    const sortedByY = [...items].sort((a, b) => b.y - a.y);
+
+    for (const item of sortedByY) {
+      let placed = false;
+      for (const cluster of rowClusters) {
+        if (Math.abs(cluster[0].y - item.y) < Y_THRESHOLD) {
+          cluster.push(item);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) rowClusters.push([item]);
+    }
+
+    for (const cluster of rowClusters) {
+      cluster.sort((a, b) => a.x - b.x);
+    }
+
+    rowClusters.sort((a, b) => b[0].y - a[0].y);
+
+    const X_GAP_THRESHOLD = 15;
+
+    for (const cluster of rowClusters) {
+      const rowCells: string[] = [];
+      let currentCellText = '';
+      let lastX = -1;
+
+      for (const item of cluster) {
+        if (lastX === -1) {
+          currentCellText = item.str;
+        } else if (item.x - lastX > X_GAP_THRESHOLD) {
+          rowCells.push(currentCellText);
+          currentCellText = item.str;
+        } else {
+          const space = currentCellText.endsWith(' ') || item.str.startsWith(' ') ? '' : ' ';
+          currentCellText += space + item.str;
+        }
+        lastX = item.x + (item.str.length * 6);
+      }
+
+      if (currentCellText) {
+        rowCells.push(currentCellText);
+      }
+
+      sheet.addRow(rowCells);
+    }
+
+    sheet.columns.forEach((column) => {
+      let maxLen = 10;
+      column.eachCell?.({ includeEmpty: false }, (cell) => {
+        const valLen = String(cell.value || '').length;
+        if (valLen > maxLen) maxLen = valLen;
+      });
+      column.width = Math.min(maxLen + 2, 50);
+    });
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return {
+    file: new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    filename: changeExtension(file.name, 'xlsx'),
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   };
 }

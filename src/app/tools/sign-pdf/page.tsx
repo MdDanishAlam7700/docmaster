@@ -14,9 +14,9 @@ export default function SignPdf() {
     const lastPage = pages[pages.length - 1];
     const { width, height } = lastPage.getSize();
 
+    lastPage.drawRectangle({ x: width - 125, y: 20, width: 110, height: 35, borderColor: rgb(0.3, 0.3, 0.3), borderWidth: 1, color: rgb(1, 1, 1) });
     lastPage.drawText('Digitally Signed', { x: width - 120, y: 40, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
     lastPage.drawText(`Signed: ${new Date().toLocaleDateString()}`, { x: width - 120, y: 28, size: 8, font, color: rgb(0.5, 0.5, 0.5) });
-    lastPage.drawRectangle({ x: width - 125, y: 20, width: 110, height: 35, borderColor: rgb(0.3, 0.3, 0.3), borderWidth: 1, color: rgb(1, 1, 1) });
 
     const saved = await pdf.save();
     return {

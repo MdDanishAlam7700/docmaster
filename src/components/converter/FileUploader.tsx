@@ -66,10 +66,16 @@ export function FileUploader({
     (acceptedFiles: File[]) => {
       const oversized = acceptedFiles.filter(f => f.size > maxFileSize);
       if (oversized.length > 0) {
-        setFileError(`"${oversized[0].name}" exceeds the ${MAX_FILE_SIZE_STR} limit for browser processing.`);
+        const names = oversized.map(f => `"${f.name}"`).join(', ');
+        setFileError(`${names} ${oversized.length === 1 ? 'exceeds' : 'exceed'} the ${MAX_FILE_SIZE_STR} limit for browser processing.`);
         return;
       }
-      const newFiles: UploadedFile[] = acceptedFiles.slice(0, maxFiles - files.length).map((file) => {
+      const remaining = maxFiles - files.length;
+      if (remaining <= 0) {
+        setFileError(`Maximum of ${maxFiles} file${maxFiles > 1 ? 's' : ''} allowed. Remove some files first.`);
+        return;
+      }
+      const newFiles: UploadedFile[] = acceptedFiles.slice(0, remaining).map((file) => {
         const id = generateId();
         const preview = getFileCategory(file.name) === 'image' ? URL.createObjectURL(file) : undefined;
         if (preview) previewUrlsRef.current.push(preview);

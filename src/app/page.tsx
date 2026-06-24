@@ -49,6 +49,9 @@ export default function HomePage() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  if (process.env.NODE_ENV === 'development' && tools.filter(t => featuredToolIds.includes(t.id)).length !== featuredToolIds.length) {
+    console.warn('[DocMaster] Some featured tool IDs are missing from tools-data.ts');
+  }
   const featuredTools = tools.filter(t => featuredToolIds.includes(t.id));
 
   const searchResults = search
@@ -103,7 +106,7 @@ export default function HomePage() {
             All-in-One <span className="text-primary">Document Converter</span>
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mt-2">
-            60+ tools to convert, merge, compress, and transform your documents.
+            55+ tools to convert, merge, compress, and transform your documents.
             All processing happens in your browser &mdash; files never leave your device.
           </p>
         </div>
@@ -163,7 +166,7 @@ export default function HomePage() {
       </div>
 
       {/* Search Results Grid */}
-      {search && showSuggestions === false && searchResults.length === 0 ? (
+      {search && searchResults.length === 0 ? (
         <p className="text-center text-muted-foreground py-12">No tools found. Try a different search term.</p>
       ) : search && showSuggestions === false ? (
         <div className="space-y-4">

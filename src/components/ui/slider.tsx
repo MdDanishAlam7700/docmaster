@@ -1,3 +1,5 @@
+'use client';
+
 import { Slider as SliderPrimitive } from "@base-ui/react/slider"
 
 import { cn } from "@/lib/utils"
@@ -10,18 +12,18 @@ function Slider({
   max = 100,
   ...props
 }: SliderPrimitive.Root.Props) {
-  const _values = Array.isArray(value)
-    ? value
-    : Array.isArray(defaultValue)
-      ? defaultValue
-      : [min, max]
+  const isControlled = value !== undefined;
+  const valueArray = isControlled
+    ? (Array.isArray(value) ? value : [value])
+    : defaultValue !== undefined
+      ? (Array.isArray(defaultValue) ? defaultValue : [defaultValue])
+      : [min]
 
   return (
     <SliderPrimitive.Root
       className={cn("data-horizontal:w-full data-vertical:h-full", className)}
       data-slot="slider"
-      defaultValue={defaultValue}
-      value={value}
+      {...(isControlled ? { value: valueArray } : { defaultValue: valueArray })}
       min={min}
       max={max}
       thumbAlignment="edge"
@@ -37,7 +39,7 @@ function Slider({
             className="bg-primary select-none data-horizontal:h-full data-vertical:w-full"
           />
         </SliderPrimitive.Track>
-        {Array.from({ length: _values.length }, (_, index) => (
+        {valueArray.map((_, index) => (
           <SliderPrimitive.Thumb
             data-slot="slider-thumb"
             key={index}

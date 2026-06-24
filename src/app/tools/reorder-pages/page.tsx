@@ -21,7 +21,7 @@ export default function ReorderPages() {
 
   const handleConvert = useCallback(async (files: UploadedFile[]): Promise<ConversionResult> => {
     const bytes = await files[0].file.arrayBuffer();
-    const pdf = await PDFDocument.load(bytes);
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
 
     const ordered = orderRef.current.length > 0 ? orderRef.current : pages;
     const indices = ordered.map(p => p.index);

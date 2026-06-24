@@ -4,12 +4,12 @@ import { ToolPageTemplate } from '@/components/converter/ToolPageTemplate';
 import { Code } from 'lucide-react';
 import { UploadedFile, ConversionResult } from '@/lib/types';
 
-const PDFJS_VERSION = '4.10.38';
+const PDFJS_VERSION = '6.0.227';
 
 export default function PdfToHtmlPage() {
   const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
     const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-    GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+    GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
     const bytes = await files[0].file.arrayBuffer();
     const pdf = await getDocument({ data: bytes }).promise;
     const pageContents: string[] = [];

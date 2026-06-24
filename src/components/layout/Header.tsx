@@ -9,7 +9,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   return (
     <header className="sticky top-0 z-30 h-14 border-b border-border bg-background/80 backdrop-blur-md flex items-center justify-between px-4 lg:px-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="lg:hidden h-9 w-9" onClick={onMenuClick}>
+        <Button variant="ghost" size="icon" className="lg:hidden h-9 w-9" onClick={onMenuClick} aria-label="Open navigation menu">
           <Menu className="h-5 w-5" />
         </Button>
         <Link href="/" className="flex items-center gap-2 lg:hidden">

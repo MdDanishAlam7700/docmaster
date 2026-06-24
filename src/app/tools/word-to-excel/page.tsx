@@ -2,11 +2,12 @@
 
 import { ToolPageTemplate } from '@/components/converter/ToolPageTemplate';
 import { ArrowRightLeft } from 'lucide-react';
+import { docxToExcel } from '@/lib/converters';
 import { UploadedFile, ConversionResult } from '@/lib/types';
 
 export default function WordToExcelPage() {
-  const handleConvert = async (_files: UploadedFile[]): Promise<ConversionResult> => {
-    throw new Error('Word to Excel conversion requires server-side processing. Try converting Word to HTML first, then open in Excel.');
+  const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
+    return docxToExcel(files[0].file);
   };
 
   return (

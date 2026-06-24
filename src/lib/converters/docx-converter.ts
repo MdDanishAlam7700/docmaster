@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType, PageBreak } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType, PageBreak, VerticalMergeType, UnderlineType } from 'docx';
 import * as mammoth from 'mammoth';
 import { ConversionResult } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
@@ -162,91 +162,168 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
           columnWidthsDxa.push(Math.round(wPx * 15)); // 1px ≈ 15 DXA
         }
 
-        const tableRows: TableRow[] = [];
+        // Grid-based table cell alignment tracker to handle rowspans and colspans
+        const grid: {
+          element: HTMLElement;
+          isMaster: boolean;
+          colSpan: number;
+          rowSpan: number;
+          vMerge?: string;
+          hMerge: boolean;
+        }[][] = [];
 
-        for (const row of rows) {
-          const cells = Array.from(row.querySelectorAll('td, th'));
-          const docxCells: TableCell[] = [];
+        const rowCount = rows.length;
+        for (let r = 0; r < rowCount; r++) {
+          grid[r] = [];
+        }
 
-          for (const cell of cells) {
-            const cellStyle = parseStyle(cell.getAttribute('style') || '');
-            const colSpan = parseInt(cell.getAttribute('colspan') || '1');
-            const rowSpan = parseInt(cell.getAttribute('rowspan') || '1');
-            const cellText = cell.textContent || '';
+        for (let r = 0; r < rowCount; r++) {
+          const rowEl = rows[r];
+          const cellElements = Array.from(rowEl.querySelectorAll('td, th'));
+          let c = 0;
 
-            const runs: TextRun[] = [];
-            if (cellText.trim()) {
-              runs.push(new TextRun({
-                text: cellText,
-                bold: cellStyle.bold,
-                italics: cellStyle.italic,
-                underline: cellStyle.underline ? {} : undefined,
-                strike: cellStyle.strike,
-                color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
-                size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
-                font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
-              }));
+          for (const cellEl of cellElements) {
+            // Find next free column index in this row
+            while (grid[r][c] !== undefined) {
+              c++;
             }
 
-            const cellChildren: (Paragraph | Table)[] = [];
-            const cellSubNodes = Array.from(cell.childNodes);
-            if (cellSubNodes.length === 1 && cellSubNodes[0].nodeType === Node.TEXT_NODE) {
-              cellChildren.push(new Paragraph({
-                children: runs,
-                alignment: docxAlign(cellStyle.align),
-              }));
-            } else {
-              let hasContent = false;
-              for (const child of cellSubNodes) {
-                if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
-                  hasContent = true;
-                  cellChildren.push(new Paragraph({
-                    children: [new TextRun({
-                      text: child.textContent || '',
-                      bold: cellStyle.bold,
-                      italics: cellStyle.italic,
-                      underline: cellStyle.underline ? {} : undefined,
-                      strike: cellStyle.strike,
-                      color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
-                      size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
-                      font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
-                    })],
-                    alignment: docxAlign(cellStyle.align),
-                  }));
-                } else if (child.nodeType === Node.ELEMENT_NODE) {
-                  hasContent = true;
-                  const childEl = child as HTMLElement;
-                  const childTag = childEl.tagName.toLowerCase();
-                  if (['p', 'span', 'b', 'strong', 'i', 'em', 'br', 'div', 'u', 'strike', 's'].includes(childTag)) {
-                    const childRuns: TextRun[] = [];
-                    childEl.childNodes.forEach(cn => {
-                      if (cn.nodeType === Node.TEXT_NODE && (cn.textContent || '').trim()) {
-                        childRuns.push(new TextRun({
-                          text: cn.textContent || '',
-                          bold: cellStyle.bold || childTag === 'b' || childTag === 'strong',
-                          italics: cellStyle.italic || childTag === 'i' || childTag === 'em',
-                          underline: cellStyle.underline || childTag === 'u' ? {} : undefined,
-                          strike: cellStyle.strike || childTag === 'strike' || childTag === 's',
-                          color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
-                          size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
-                          font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
-                        }));
-                      }
-                    });
-                    if (childRuns.length > 0) {
-                      cellChildren.push(new Paragraph({
-                        children: childRuns,
-                        alignment: docxAlign(cellStyle.align),
-                      }));
-                    }
-                  }
+            const colSpan = parseInt(cellEl.getAttribute('colspan') || '1');
+            const rowSpan = parseInt(cellEl.getAttribute('rowspan') || '1');
+
+            // Fill grid for this cell and its merges
+            for (let i = 0; i < rowSpan; i++) {
+              const targetRow = r + i;
+              if (targetRow >= rowCount) break;
+              grid[targetRow] = grid[targetRow] || [];
+              for (let j = 0; j < colSpan; j++) {
+                const targetCol = c + j;
+                if (i === 0 && j === 0) {
+                  grid[targetRow][targetCol] = {
+                    element: cellEl as HTMLElement,
+                    isMaster: true,
+                    colSpan,
+                    rowSpan,
+                    vMerge: rowSpan > 1 ? VerticalMergeType.RESTART : undefined,
+                    hMerge: false,
+                  };
+                } else {
+                  grid[targetRow][targetCol] = {
+                    element: cellEl as HTMLElement,
+                    isMaster: false,
+                    colSpan,
+                    rowSpan,
+                    vMerge: rowSpan > 1 ? VerticalMergeType.CONTINUE : undefined,
+                    hMerge: j > 0,
+                  };
                 }
               }
-              if (!hasContent && runs.length > 0) {
+            }
+            c += colSpan;
+          }
+        }
+
+        const tableRows: TableRow[] = [];
+
+        for (let r = 0; r < rowCount; r++) {
+          const docxCells: TableCell[] = [];
+          const colsInRow = grid[r].length;
+
+          for (let c_idx = 0; c_idx < colsInRow; c_idx++) {
+            const gridCell = grid[r][c_idx];
+            if (!gridCell) continue;
+
+            // If it is horizontally merged and not the first cell of the horizontal merge, skip it.
+            // docx handles colSpan on the first cell directly.
+            if (gridCell.hMerge) {
+              continue;
+            }
+
+            const cell = gridCell.element;
+            const cellStyle = parseStyle(cell.getAttribute('style') || '');
+            const colSpan = gridCell.colSpan;
+            const rowSpan = gridCell.rowSpan;
+            const cellText = cell.textContent || '';
+
+            const cellChildren: (Paragraph | Table)[] = [];
+
+            if (gridCell.vMerge === VerticalMergeType.CONTINUE) {
+              // Vertically merged continuation cells must contain an empty paragraph
+              cellChildren.push(new Paragraph({ children: [] }));
+            } else {
+              const runs: TextRun[] = [];
+              if (cellText.trim()) {
+                runs.push(new TextRun({
+                  text: cellText,
+                  bold: cellStyle.bold,
+                  italics: cellStyle.italic,
+                  underline: cellStyle.underline ? { type: UnderlineType.SINGLE } : undefined,
+                  strike: cellStyle.strike,
+                  color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
+                  size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
+                  font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
+                }));
+              }
+
+              const cellSubNodes = Array.from(cell.childNodes);
+              if (cellSubNodes.length === 1 && cellSubNodes[0].nodeType === Node.TEXT_NODE) {
                 cellChildren.push(new Paragraph({
                   children: runs,
                   alignment: docxAlign(cellStyle.align),
                 }));
+              } else {
+                let hasContent = false;
+                for (const child of cellSubNodes) {
+                  if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
+                    hasContent = true;
+                    cellChildren.push(new Paragraph({
+                      children: [new TextRun({
+                        text: child.textContent || '',
+                        bold: cellStyle.bold,
+                        italics: cellStyle.italic,
+                        underline: cellStyle.underline ? { type: UnderlineType.SINGLE } : undefined,
+                        strike: cellStyle.strike,
+                        color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
+                        size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
+                        font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
+                      })],
+                      alignment: docxAlign(cellStyle.align),
+                    }));
+                  } else if (child.nodeType === Node.ELEMENT_NODE) {
+                    hasContent = true;
+                    const childEl = child as HTMLElement;
+                    const childTag = childEl.tagName.toLowerCase();
+                    if (['p', 'span', 'b', 'strong', 'i', 'em', 'br', 'div', 'u', 'strike', 's'].includes(childTag)) {
+                      const childRuns: TextRun[] = [];
+                      childEl.childNodes.forEach(cn => {
+                        if (cn.nodeType === Node.TEXT_NODE && (cn.textContent || '').trim()) {
+                          childRuns.push(new TextRun({
+                            text: cn.textContent || '',
+                            bold: cellStyle.bold || childTag === 'b' || childTag === 'strong',
+                            italics: cellStyle.italic || childTag === 'i' || childTag === 'em',
+                            underline: cellStyle.underline || childTag === 'u' ? { type: UnderlineType.SINGLE } : undefined,
+                            strike: cellStyle.strike || childTag === 'strike' || childTag === 's',
+                            color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
+                            size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
+                            font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
+                          }));
+                        }
+                      });
+                      if (childRuns.length > 0) {
+                        cellChildren.push(new Paragraph({
+                          children: childRuns,
+                          alignment: docxAlign(cellStyle.align),
+                        }));
+                      }
+                    }
+                  }
+                }
+                if (!hasContent && runs.length > 0) {
+                  cellChildren.push(new Paragraph({
+                    children: runs,
+                    alignment: docxAlign(cellStyle.align),
+                  }));
+                }
               }
             }
 
@@ -256,9 +333,12 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
 
             const docxCellOptions: any = {
               children: cellChildren,
-              columnSpan: colSpan,
-              rowSpan: rowSpan,
+              columnSpan: colSpan > 1 ? colSpan : undefined,
             };
+
+            if (gridCell.vMerge) {
+              docxCellOptions.vMerge = gridCell.vMerge;
+            }
 
             const borders: any = {};
             if (hasGridlines) {
@@ -409,5 +489,57 @@ export async function textToHtml(text: string, filename: string): Promise<Conver
     file: new Blob([html], { type: 'text/html' }),
     filename: changeExtension(filename, 'html'),
     mimeType: 'text/html',
+  };
+}
+
+export async function docxToExcel(file: File): Promise<ConversionResult> {
+  const bytes = await file.arrayBuffer();
+  const result = await mammoth.convertToHtml({ arrayBuffer: bytes });
+  const html = result.value;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const tables = doc.querySelectorAll('table');
+
+  const ExcelJS = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
+
+  if (tables.length === 0) {
+    const sheet = workbook.addWorksheet('Document Text');
+    sheet.columns = [{ header: 'Content', key: 'content', width: 80 }];
+    const paragraphs = doc.querySelectorAll('p, h1, h2, h3, h4, h5, h6');
+    paragraphs.forEach((p) => {
+      const text = p.textContent?.trim();
+      if (text) {
+        sheet.addRow({ content: text });
+      }
+    });
+  } else {
+    tables.forEach((table, index) => {
+      const sheetName = `Table ${index + 1}`;
+      const sheet = workbook.addWorksheet(sheetName);
+
+      const rows = table.querySelectorAll('tr');
+      rows.forEach((row) => {
+        const cells = row.querySelectorAll('td, th');
+        const rowData: string[] = [];
+        cells.forEach((cell) => {
+          rowData.push(cell.textContent?.trim() || '');
+        });
+        sheet.addRow(rowData);
+      });
+
+      if (sheet.rowCount > 0) {
+        const headerRow = sheet.getRow(1);
+        headerRow.font = { bold: true };
+      }
+    });
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return {
+    file: new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    filename: changeExtension(file.name, 'xlsx'),
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   };
 }

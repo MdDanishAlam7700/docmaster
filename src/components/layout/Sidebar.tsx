@@ -43,6 +43,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
       <aside
@@ -83,6 +84,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 <div key={cat.id}>
                   <button
                     onClick={() => toggleCategory(cat.id)}
+                    aria-expanded={isExpanded}
                     className={cn(
                       'flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:translate-x-0.5',
                       isExpanded

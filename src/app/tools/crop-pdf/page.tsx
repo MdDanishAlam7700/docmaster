@@ -29,20 +29,20 @@ export default function CropPdf() {
       options={
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Top (pt)</Label>
-            <Input type="number" value={top} onChange={(e) => setTop(Number(e.target.value))} />
+            <Label htmlFor="crop-top">Top (pt)</Label>
+            <Input id="crop-top" type="number" min={0} max={2000} value={top} onChange={(e) => setTop(Number(e.target.value))} />
           </div>
           <div className="space-y-2">
-            <Label>Right (pt)</Label>
-            <Input type="number" value={right} onChange={(e) => setRight(Number(e.target.value))} />
+            <Label htmlFor="crop-right">Right (pt)</Label>
+            <Input id="crop-right" type="number" min={0} max={2000} value={right} onChange={(e) => setRight(Number(e.target.value))} />
           </div>
           <div className="space-y-2">
-            <Label>Bottom (pt)</Label>
-            <Input type="number" value={bottom} onChange={(e) => setBottom(Number(e.target.value))} />
+            <Label htmlFor="crop-bottom">Bottom (pt)</Label>
+            <Input id="crop-bottom" type="number" min={0} max={2000} value={bottom} onChange={(e) => setBottom(Number(e.target.value))} />
           </div>
           <div className="space-y-2">
-            <Label>Left (pt)</Label>
-            <Input type="number" value={left} onChange={(e) => setLeft(Number(e.target.value))} />
+            <Label htmlFor="crop-left">Left (pt)</Label>
+            <Input id="crop-left" type="number" min={0} max={2000} value={left} onChange={(e) => setLeft(Number(e.target.value))} />
           </div>
         </div>
       }

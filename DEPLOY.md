@@ -29,7 +29,7 @@ DEPLOY.md        - This file
 package.json     - Dependencies and scripts
 tsconfig.json    - TypeScript configuration
 next.config.ts   - Next.js configuration
-tailwind.config.ts - Tailwind configuration
+globals.css       - Tailwind configuration (v4 CSS-based)
 ```
 
 ### 2.2. Verify the current state
@@ -70,7 +70,7 @@ Set-Location -LiteralPath "C:\Users\danis\OneDrive\Desktop\Codings\Document Tool
 npx next build
 ```
 
-**Expected output:** Must show "Compiled successfully" with 0 TypeScript errors and list all 59 pages as `○ (Static) prerendered as static content`.
+**Expected output:** Must show "Compiled successfully" with 0 TypeScript errors and list all pages as `○ (Static) prerendered as static content`.
 
 If the build fails:
 1. Read the error messages carefully
@@ -176,7 +176,7 @@ Do **NOT** create GitHub Actions workflow files for deployment. The file `.githu
 ## 7. Verification Checklist (run before publishing)
 
 - [ ] `npx next build` passes with 0 TypeScript errors
-- [ ] All 59 pages are generated as static content
+- [ ] All pages are generated as static content
 - [ ] `git status` shows only intended files
 - [ ] Commit message is descriptive and follows the format
 - [ ] `git push` succeeded (check for `main -> main` in output)

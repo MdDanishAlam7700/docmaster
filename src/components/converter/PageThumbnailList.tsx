@@ -34,7 +34,7 @@ interface PageThumbnailListProps {
   onOrderChange?: (pages: PageInfo[]) => void;
 }
 
-const PDFJS_VERSION = '4.10.38';
+const PDFJS_VERSION = '6.0.227';
 
 function SortableThumbnail({
   page,
@@ -86,22 +86,15 @@ export function PageThumbnailList({
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [internalSelected, setInternalSelected] = useState<Set<number>>(new Set());
-  const urlsRef = useRef<string[]>([]);
 
   const selected = externalSelected ?? internalSelected;
-
-  useEffect(() => {
-    return () => {
-      urlsRef.current.forEach(u => URL.revokeObjectURL(u));
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     (async () => {
       const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-      GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+      GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
       const bytes = await file.arrayBuffer();
       const pdf = await getDocument({ data: bytes }).promise;
@@ -114,10 +107,10 @@ export function PageThumbnailList({
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d')!;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas not available');
         await page.render({ canvasContext: ctx, viewport, canvas }).promise;
         const url = canvas.toDataURL('image/webp', 0.6);
-        urlsRef.current.push(url);
         items.push({ index: i - 1, src: url });
       }
 
@@ -140,10 +133,13 @@ export function PageThumbnailList({
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
       else next.add(index);
-      onSelectionChange?.(next);
       return next;
     });
-  }, [onSelectionChange]);
+  }, []);
+
+  useEffect(() => {
+    onSelectionChange?.(internalSelected);
+  }, [internalSelected, onSelectionChange]);
 
   const selectAll = useCallback(() => {
     const all = new Set(pages.map(p => p.index));
@@ -163,11 +159,15 @@ export function PageThumbnailList({
     setPages(prev => {
       const oldIndex = prev.findIndex(p => p.index === active.id);
       const newIndex = prev.findIndex(p => p.index === over.id);
-      const reordered = arrayMove(prev, oldIndex, newIndex);
-      onOrderChange?.(reordered);
-      return reordered;
+      return arrayMove(prev, oldIndex, newIndex);
     });
-  }, [onOrderChange]);
+  }, []);
+
+  useEffect(() => {
+    if (pages.length > 0) {
+      onOrderChange?.(pages);
+    }
+  }, [pages, onOrderChange]);
 
   if (loading) {
     return (

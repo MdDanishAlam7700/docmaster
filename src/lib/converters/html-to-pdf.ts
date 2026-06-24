@@ -1,86 +1,60 @@
 import { ConversionResult } from '@/lib/types';
 
 export async function renderHtmlToPdf(html: string, filename: string): Promise<ConversionResult> {
-  const { default: jspdf } = await import('jspdf');
-  const html2canvas = (await import('html2canvas')).default;
+  // html2pdf.js is a browser-only bundled library (includes html2canvas internally).
+  // We import it dynamically to ensure it only runs client-side.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const html2pdf = (await import('html2pdf.js' as any)).default as any;
 
+  // Create an isolated container element to render the HTML
   const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-99999px';
+  container.style.top = '0';
+  container.style.width = '800px';
+  container.style.background = '#ffffff';
+  container.style.color = '#000000';
+  container.style.fontFamily = 'Arial, sans-serif';
+  container.style.fontSize = '12px';
+  container.style.lineHeight = '1.5';
+  container.style.padding = '20px';
   container.innerHTML = html;
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:20px;font-family:Arial,sans-serif;line-height:1.6;';
   document.body.appendChild(container);
 
-  const table = container.querySelector('table');
-  if (table) {
-    const tblWidth = table.style.width;
-    if (tblWidth && tblWidth.endsWith('px')) {
-      const widthVal = parseInt(tblWidth);
-      container.style.width = `${widthVal + 40}px`;
-    } else {
-      container.style.width = 'fit-content';
+  // Preserve any inline styles and layout by copying document stylesheets
+  const styleEls = document.querySelectorAll('link[rel="stylesheet"], style');
+  styleEls.forEach((el) => {
+    try {
+      container.prepend(el.cloneNode(true));
+    } catch {
+      // ignore cross-origin errors
     }
-  } else {
-    container.style.width = '800px';
-  }
+  });
 
-  try {
-    const canvas = await html2canvas(container, {
+  const name = filename.replace(/\.[^.]+$/, '.pdf');
+
+  const options = {
+    margin: [10, 10, 10, 10],
+    filename: name,
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: {
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff',
-      width: container.scrollWidth,
-      height: container.scrollHeight,
       logging: false,
-    });
+    },
+    jsPDF: {
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+    },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+  };
 
-    const pdf = new jspdf({ unit: 'mm', format: 'a4' });
-    const pdfW = 210;
-    const pdfH = 297;
-    const margin = 10;
-    const printableW = pdfW - (margin * 2);
-    const printableH = pdfH - (margin * 2);
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    const imgW = canvas.width;
-    const imgH = canvas.height;
-    
-    // Scale ratio based on width to fit printable page area
-    const ratio = printableW / imgW;
-    const renderW = printableW;
-    const renderH = imgH * ratio;
-    const x = margin;
-
-    if (renderH <= printableH) {
-      pdf.addImage(imgData, 'JPEG', x, margin, renderW, renderH);
-    } else {
-      let remaining = imgH;
-      let yOffset = 0;
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = canvas.width;
-      
-      const maxPageH = Math.floor(printableH / ratio); // page slice height in pixels
-
-      while (remaining > 0) {
-        const sliceH = Math.min(remaining, maxPageH);
-        pageCanvas.height = sliceH;
-        const pageCtx = pageCanvas.getContext('2d')!;
-        
-        // Draw the pixel slice from original canvas to temporary pageCanvas
-        pageCtx.drawImage(canvas, 0, yOffset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-        
-        const pageData = pageCanvas.toDataURL('image/jpeg', 0.92);
-        if (yOffset > 0) pdf.addPage();
-        
-        const renderSliceH = sliceH * ratio; // convert pixel height to mm
-        pdf.addImage(pageData, 'JPEG', x, margin, renderW, renderSliceH);
-        
-        yOffset += sliceH;
-        remaining -= sliceH;
-      }
-    }
-
-    const name = filename.replace(/\.[^.]+$/, '.pdf');
+  try {
+    const pdfBlob: Blob = await html2pdf().set(options).from(container).outputPdf('blob');
     return {
-      file: new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' }),
+      file: pdfBlob,
       filename: name,
       mimeType: 'application/pdf',
     };

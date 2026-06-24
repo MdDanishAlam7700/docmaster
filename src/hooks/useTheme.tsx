@@ -24,13 +24,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement;
     root.classList.remove('light', 'dark');
 
+    const applyTheme = (isDark: boolean) => {
+      root.classList.add(isDark ? 'dark' : 'light');
+    };
+
     if (theme === 'system') {
-      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      root.classList.add(systemDark ? 'dark' : 'light');
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      applyTheme(mq.matches);
+      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches);
+      mq.addEventListener('change', handler);
+      localStorage.setItem('theme', 'system');
+      return () => mq.removeEventListener('change', handler);
     } else {
       root.classList.add(theme);
+      localStorage.setItem('theme', theme);
     }
-    localStorage.setItem('theme', theme);
   }, [theme, mounted]);
 
   return (

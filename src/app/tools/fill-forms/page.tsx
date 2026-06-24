@@ -11,15 +11,29 @@ export default function FillForms() {
     const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const form = pdf.getForm();
     const fields = form.getFields();
+    let filledCount = 0;
     for (const field of fields) {
       const type = field.constructor.name;
-      if (type.includes('TextField')) {
-        try { (field as any).setText('[Filled]'); } catch {}
-      } else if (type.includes('CheckBox')) {
-        try { (field as any).check(); } catch {}
-      } else if (type.includes('RadioGroup')) {
-        try { (field as any).select((field as any).getOptions()?.[0]); } catch {}
+      try {
+        if (type.includes('TextField')) {
+          (field as any).setText('[Filled]');
+          filledCount++;
+        } else if (type.includes('CheckBox')) {
+          (field as any).check();
+          filledCount++;
+        } else if (type.includes('RadioGroup')) {
+          const opts = (field as any).getOptions?.();
+          if (opts?.length) {
+            (field as any).select(opts[0]);
+            filledCount++;
+          }
+        }
+      } catch {
+        // Skip unsupported field types silently
       }
+    }
+    if (filledCount === 0) {
+      throw new Error('No fillable form fields found in this PDF.');
     }
     const saved = await pdf.save({ useObjectStreams: false });
     return {

@@ -15,7 +15,7 @@ export default function HeaderFooter() {
 
   const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
     const bytes = await files[0].file.arrayBuffer();
-    const pdf = await PDFDocument.load(bytes);
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const pages = pdf.getPages();
 
@@ -29,7 +29,7 @@ export default function HeaderFooter() {
       }
 
       if (footerText.trim()) {
-        const text = footerText === 'Page' ? `${footerText} ${index + 1}` : footerText;
+        const text = footerText.trim().toLowerCase() === 'page' ? `Page ${index + 1}` : footerText;
         const tw = font.widthOfTextAtSize(text, 9);
         page.drawText(text, {
           x: (width - tw) / 2, y: 20, size: 9, font, color: rgb(0.4, 0.4, 0.4),
