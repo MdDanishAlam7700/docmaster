@@ -282,95 +282,97 @@ export async function flattenPdf(file: File): Promise<ConversionResult> {
   };
 }
 
-export async function pdfToDocx(file: File): Promise<ConversionResult> {
+export async function pdfToDocx(file: File, options?: ConverterOptions): Promise<ConversionResult> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
   GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
+  const { Document: DocxDocument, Packer: DocxPacker, Paragraph: DocxParagraph, ImageRun, SectionType } = await import('docx');
+
   const bytes = await file.arrayBuffer();
   const pdf = await getDocument({ data: bytes }).promise;
-  const paragraphs: Paragraph[] = [];
+  const total = pdf.numPages;
 
-  for (let p = 1; p <= pdf.numPages; p++) {
-    if (p > 1) {
-      paragraphs.push(new Paragraph({ children: [new PageBreak()] }));
-    }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sections: any[] = [];
+
+  for (let p = 1; p <= total; p++) {
+    if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    const items: { str: string; x: number; y: number; height: number; fontName: string }[] = [];
+    // Render at 2× scale for sharp, high-resolution output
+    const viewport = page.getViewport({ scale: 2 });
 
-    for (const item of content.items) {
-      const it = item as any;
-      if (!it.str) continue;
-      items.push({
-        str: it.str,
-        x: it.transform[4],
-        y: it.transform[5],
-        height: it.height || 12,
-        fontName: it.fontName || '',
-      });
-    }
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-    const Y_THRESHOLD = 3;
-    const lines: typeof items[] = [];
-    const sorted = [...items].sort((a, b) => b.y - a.y);
+    // Fill white background (PDF pages may be transparent)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    for (const item of sorted) {
-      let placed = false;
-      for (const line of lines) {
-        if (Math.abs(line[0].y - item.y) < Y_THRESHOLD) {
-          line.push(item);
-          placed = true;
-          break;
-        }
-      }
-      if (!placed) lines.push([item]);
-    }
+    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
 
-    for (const line of lines) {
-      line.sort((a, b) => a.x - b.x);
-    }
+    // Export page as JPEG
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => {
+        if (b) resolve(b);
+        else reject(new Error(`Failed to render page ${p} as image`));
+      }, 'image/jpeg', 0.92);
+    });
+    const imageData = new Uint8Array(await blob.arrayBuffer());
 
-    for (const line of lines) {
-      const textRuns: TextRun[] = [];
-      for (const item of line) {
-        const fontName = item.fontName;
-        const isBold = /\b(Bold|BD|Black)\b/i.test(fontName);
-        const isItalic = /\b(Italic|It|Oblique)\b/i.test(fontName);
-        const cleanFont = fontName
-          .replace(/^[A-Za-z0-9]+\+/, '')
-          .replace(/-(Bold|Italic|Regular|BD|It|Oblique|Black|MT).*$/i, '')
-          .replace(/[_-]/g, ' ')
-          .trim();
+    // PDF page dimensions in PDF points (72 dpi equivalent), at scale 1
+    const pageWidthPt = viewport.width / 2;
+    const pageHeightPt = viewport.height / 2;
 
-        const size = Math.round((item.height || 12) * 2);
+    // DOCX page size in twips (1 pt = 20 twips)
+    const pageWidthTwips = Math.round(pageWidthPt * 20);
+    const pageHeightTwips = Math.round(pageHeightPt * 20);
 
-        textRuns.push(new TextRun({
-          text: item.str,
-          font: cleanFont || undefined,
-          size: Math.max(size, 12),
-          bold: isBold,
-          italics: isItalic,
-        }));
-      }
-      if (textRuns.length > 0) {
-        paragraphs.push(new Paragraph({ children: textRuns }));
-      }
-    }
+    // Image display size in DOCX in pixels at 96 dpi
+    // 1 pt = 96/72 px = 1.333 px → twips/15 = pixels
+    const imgW = Math.round(pageWidthTwips / 15);
+    const imgH = Math.round(pageHeightTwips / 15);
+
+    sections.push({
+      properties: {
+        type: p > 1 ? SectionType.NEXT_PAGE : undefined,
+        page: {
+          size: { width: pageWidthTwips, height: pageHeightTwips },
+          margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        },
+      },
+      children: [
+        new DocxParagraph({
+          children: [
+            new ImageRun({
+              data: imageData,
+              transformation: { width: imgW, height: imgH },
+              type: 'jpg',
+            }),
+          ],
+          spacing: { before: 0, after: 0, line: 240, lineRule: 'exact' },
+        }),
+      ],
+    });
+
+    options?.onProgress?.(Math.round((p / total) * 100), `Rendering page ${p} of ${total}`);
   }
 
-  if (paragraphs.length === 0) {
-    paragraphs.push(new Paragraph({ children: [new TextRun({ text: '' })] }));
-  }
+  const doc = new DocxDocument({ sections });
+  const buffer = await DocxPacker.toBuffer(doc);
 
-  const doc = new Document({ sections: [{ children: paragraphs }] });
-  const buffer = await Packer.toBuffer(doc);
   return {
-    file: new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+    file: new Blob([new Uint8Array(buffer)], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }),
     filename: changeExtension(file.name, 'docx'),
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   };
 }
+
 
 export async function extractPdfText(file: File): Promise<ConversionResult> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
