@@ -61,18 +61,148 @@ export async function excelToCsv(file: File): Promise<ConversionResult> {
   };
 }
 
-function formatHex(argb?: string): string {
-  if (!argb) return '';
-  return '#' + (argb.length > 6 ? argb.slice(2) : argb);
+const standardThemeColors = [
+  'FFFFFF', // 0: White
+  '000000', // 1: Black
+  'E7E6E6', // 2: Light Gray (Background 1)
+  '44546A', // 3: Dark Blue Gray (Text 1)
+  '5B9BD5', // 4: Accent 1 (Blue)
+  'ED7D31', // 5: Accent 2 (Orange)
+  'A5A5A5', // 6: Accent 3 (Gray)
+  'FFC000', // 7: Accent 4 (Gold)
+  '4472C4', // 8: Accent 5 (Blue)
+  '70AD47', // 9: Accent 6 (Green)
+];
+
+const indexedColors: Record<number, string> = {
+  8: '000000', 9: 'FFFFFF', 10: 'FF0000', 11: '00FF00', 12: '0000FF', 13: 'FFFF00', 14: 'FF00FF', 15: '00FFFF',
+  16: '800000', 17: '008000', 18: '000080', 19: '808000', 20: '800080', 21: '008080', 22: 'C0C0C0', 23: '808080',
+  24: '9999FF', 25: '993366', 26: 'FFFFCC', 27: 'CCFFFF', 28: '660066', 29: 'FF8080', 30: '0066CC', 31: 'CCCCFF',
+  32: '000080', 33: 'FF00FF', 34: 'FFFF00', 35: '00FFFF', 36: '800080', 37: '800000', 38: '008080', 39: '0000FF',
+  40: '00CCFF', 41: 'CCFFFF', 42: 'CCFFCC', 43: 'FFFF99', 44: '99CCFF', 45: 'FF99CC', 46: 'CC99FF', 47: 'FFCC99',
+  48: '3366FF', 49: '33CCCC', 50: '99CC00', 51: 'FFCC00', 52: 'FF9900', 53: 'FF6600', 54: '666699', 55: '969696',
+  56: '003366', 57: '339966', 58: '003300', 59: '333300', 60: '993300', 61: '993366', 62: '333399', 63: '333333'
+};
+
+function applyTint(hex: string, tint?: number): string {
+  if (tint === undefined || tint === 0) return '#' + hex;
+  
+  let r = parseInt(hex.slice(0, 2), 16);
+  let g = parseInt(hex.slice(2, 4), 16);
+  let b = parseInt(hex.slice(4, 6), 16);
+
+  if (tint > 0) {
+    r = Math.round(r + (255 - r) * tint);
+    g = Math.round(g + (255 - g) * tint);
+    b = Math.round(b + (255 - b) * tint);
+  } else {
+    r = Math.round(r * (1 + tint));
+    g = Math.round(g * (1 + tint));
+    b = Math.round(b * (1 + tint));
+  }
+
+  const rHex = Math.max(0, Math.min(255, r)).toString(16).padStart(2, '0');
+  const gHex = Math.max(0, Math.min(255, g)).toString(16).padStart(2, '0');
+  const bHex = Math.max(0, Math.min(255, b)).toString(16).padStart(2, '0');
+
+  return `#${rHex}${gHex}${bHex}`.toUpperCase();
 }
 
 function cssColor(color: any): string {
   if (!color) return '';
-  if (typeof color === 'string') return color;
-  if (color.argb) return formatHex(color.argb);
+  // Handle direct string color values. If it's a 'lab()' function, which is unsupported, fallback to black.
+  if (typeof color === 'string') {
+    if (color.trim().toLowerCase().startsWith('lab(')) {
+      // Lab color conversion is not supported; using black as safe fallback.
+      return '#000000';
+    }
+    return color;
+  }
+  
+  let hex = '';
+  if (color.argb) {
+    hex = color.argb.length > 6 ? color.argb.slice(2) : color.argb;
+  } else if (color.theme !== undefined) {
+    const themeIndex = color.theme;
+    const baseColor = standardThemeColors[themeIndex] || '000000';
+    return applyTint(baseColor, color.tint);
+  } else if (color.indexed !== undefined) {
+    hex = indexedColors[color.indexed] || '000000';
+  }
+  
+  if (hex) {
+    if (color.tint !== undefined) {
+      return applyTint(hex, color.tint);
+    }
+    return '#' + hex;
+  }
+  
   if (color.rgb) return `rgb(${color.rgb.r},${color.rgb.g},${color.rgb.b})`;
-  if (color.theme !== undefined) return '';
   return '';
+}
+
+function formatCellValue(value: any, numFmt?: string): string {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) {
+    if (numFmt) {
+      const fmt = numFmt.toLowerCase();
+      if (fmt.includes('yyyy') || fmt.includes('yy')) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const date = String(value.getDate()).padStart(2, '0');
+        if (fmt.includes('yyyy-mm-dd') || fmt.includes('yyyy/mm/dd')) return `${year}-${month}-${date}`;
+        return `${month}/${date}/${year}`;
+      }
+    }
+    return value.toLocaleDateString();
+  }
+  
+  if (typeof value === 'number') {
+    if (!numFmt) return String(value);
+    
+    // Check percentage
+    if (numFmt.endsWith('%')) {
+      const decimalsMatch = numFmt.match(/0\.([0]+)%/);
+      const decimals = decimalsMatch ? decimalsMatch[1].length : 0;
+      return (value * 100).toFixed(decimals) + '%';
+    }
+    
+    // Check currency or number with commas
+    if (numFmt.includes('#,##0')) {
+      const hasDecimals = numFmt.includes('.');
+      const decimalsMatch = numFmt.match(/\.([0#]+)/);
+      const decimals = hasDecimals && decimalsMatch ? decimalsMatch[1].length : 0;
+      
+      const parts = value.toFixed(decimals).split('.');
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      const formattedNum = parts.join('.');
+      
+      if (numFmt.includes('$')) return '$' + formattedNum;
+      if (numFmt.includes('€')) return '€' + formattedNum;
+      if (numFmt.includes('£')) return '£' + formattedNum;
+      if (numFmt.includes('¥')) return '¥' + formattedNum;
+      return formattedNum;
+    }
+    
+    // Fixed decimals like "0.00"
+    if (/^0\.0+$/.test(numFmt)) {
+      const decimals = numFmt.split('.')[1].length;
+      return value.toFixed(decimals);
+    }
+  }
+
+  if (typeof value === 'object') {
+    if (Array.isArray((value as any).richText)) {
+      return (value as any).richText.map((t: any) => t.text || '').join('');
+    }
+    const resultVal = (value as any).result ?? (value as any).formula ?? (value as any).text ?? String(value);
+    if (typeof resultVal === 'object') {
+      return '';
+    }
+    return String(resultVal);
+  }
+  
+  return String(value);
 }
 
 function buildBorderStyle(border: any, side: string): string {
@@ -107,11 +237,14 @@ export async function excelToHtml(file: File): Promise<ConversionResult> {
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Arial,sans-serif;padding:20px;background:#f8fafc}
 table{border-collapse:collapse;background:#fff;margin-bottom:20px;table-layout:fixed;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
-td,th{padding:6px 10px;min-width:40px;overflow:hidden;text-overflow:ellipsis}
+td,th{padding:4px 6px;min-width:30px;overflow:hidden;text-overflow:ellipsis}
 table.gridlines{border:1px solid #cbd5e1}
 table.gridlines td, table.gridlines th{border:1px solid #e2e8f0}
 th{background-color:#f1f5f9;font-weight:bold}
+.page-break{page-break-before:always;break-before:page;}
 </style></head><body>`;
+
+  let isFirstSheet = true;
 
   workbook.eachSheet((sheet) => {
     let showGrid = true;
@@ -119,17 +252,23 @@ th{background-color:#f1f5f9;font-weight:bold}
       showGrid = sheet.views[0].showGridLines !== false;
     }
 
+    const defaultColW = sheet.properties?.defaultColWidth ? Math.round(sheet.properties.defaultColWidth * 8) : 80;
     const colWidths: Record<number, string> = {};
-    sheet.columns?.forEach((col, i) => {
-      if (col.width) colWidths[i + 1] = `${Math.round(col.width * 8)}px`;
-    });
+    const maxCols = Math.max(sheet.columnCount, 1);
+    for (let c = 1; c <= maxCols; c++) {
+      const col = sheet.getColumn(c);
+      if (col && col.width) {
+        colWidths[c] = `${Math.round(col.width * 8)}px`;
+      } else {
+        colWidths[c] = `${defaultColW}px`;
+      }
+    }
 
     let totalWidth = 0;
     let colGroups = '';
-    const maxCols = Math.max(sheet.columnCount, 1);
     for (let c = 1; c <= maxCols; c++) {
       const colWStr = colWidths[c];
-      const colWPx = colWStr ? parseInt(colWStr) : 100;
+      const colWPx = colWStr ? parseInt(colWStr) : defaultColW;
       totalWidth += colWPx;
       colGroups += `<col style="width:${colWPx}px">`;
     }
@@ -152,14 +291,20 @@ th{background-color:#f1f5f9;font-weight:bold}
 
     const occupiedCells = new Set<string>();
 
-    html += `<h2 style="margin:0 0 8px 0;font-size:16px;color:#334155">${sheet.name}</h2>`;
+    if (!isFirstSheet) {
+      html += `<div class="page-break"></div>`;
+    }
+    isFirstSheet = false;
+
+    html += `<h2 style="margin:20px 0 8px 0;font-size:16px;color:#334155">${sheet.name}</h2>`;
     html += `<table class="${showGrid ? 'gridlines' : ''}" style="min-width:${totalWidth}px;width:${totalWidth}px">`;
     html += colGroups;
 
     sheet.eachRow((row) => {
-      if (row.height) rowHeights[row.number] = `${row.height}px`;
+      const heightPx = row.height ? Math.round(row.height * 1.33) : undefined;
+      if (heightPx) rowHeights[row.number] = `${heightPx}px`;
 
-      html += `<tr${row.height ? ` style="height:${row.height}px"` : ''}>`;
+      html += `<tr${heightPx ? ` style="height:${heightPx}px"` : ''}>`;
 
       for (let colNumber = 1; colNumber <= maxCols; colNumber++) {
         const cell = row.getCell(colNumber);
@@ -204,12 +349,14 @@ th{background-color:#f1f5f9;font-weight:bold}
         if (font.size) styles.push(`font-size:${font.size}pt`);
         if (font.bold) styles.push('font-weight:bold');
         if (font.italic) styles.push('font-style:italic');
+        if (font.underline) styles.push('text-decoration:underline');
+        if (font.strike) styles.push('text-decoration:line-through');
         if (font.color) {
           const c = cssColor(font.color);
           if (c) styles.push(`color:${c}`);
         }
 
-        if (fill.type === 'pattern' && fill.pattern === 'solid' && fill.fgColor) {
+        if (fill.type === 'pattern' && fill.fgColor) {
           const c = cssColor(fill.fgColor);
           if (c) styles.push(`background-color:${c}`);
         }
@@ -223,15 +370,39 @@ th{background-color:#f1f5f9;font-weight:bold}
         if (leftB) styles.push(`border-left:${leftB}`);
         if (rightB) styles.push(`border-right:${rightB}`);
 
-        if (alignment.horizontal) styles.push(`text-align:${alignment.horizontal}`);
-        if (alignment.vertical) styles.push(`vertical-align:${alignment.vertical}`);
-        if (alignment.wrapText) styles.push('white-space:normal;word-wrap:break-word');
+        if (alignment.horizontal) {
+          const map: Record<string, string> = {
+            left: 'left',
+            center: 'center',
+            right: 'right',
+            justify: 'justify',
+          };
+          const cssAlign = map[alignment.horizontal];
+          if (cssAlign) styles.push(`text-align:${cssAlign}`);
+        }
+        if (alignment.vertical) {
+          const map: Record<string, string> = {
+            top: 'top',
+            middle: 'middle',
+            bottom: 'bottom',
+          };
+          const cssVAlign = map[alignment.vertical];
+          if (cssVAlign) styles.push(`vertical-align:${cssVAlign}`);
+        }
+        if (alignment.indent) {
+          styles.push(`padding-left:${alignment.indent * 8}px`);
+        }
+        if (alignment.wrapText) {
+          styles.push('white-space:normal;word-wrap:break-word;overflow:visible');
+        } else {
+          styles.push('white-space:nowrap;overflow:hidden;text-overflow:clip');
+        }
 
         // Calculate cell width based on spanned columns
         let cellWidthPx = 0;
         for (let c = 0; c < colspan; c++) {
           const colWStr = colWidths[colNumber + c];
-          const colWPx = colWStr ? parseInt(colWStr) : 100;
+          const colWPx = colWStr ? parseInt(colWStr) : defaultColW;
           cellWidthPx += colWPx;
         }
         styles.push(`width:${cellWidthPx}px`);
@@ -240,17 +411,9 @@ th{background-color:#f1f5f9;font-weight:bold}
         let rowSpanStr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
         let styleStr = styles.length > 0 ? ` style="${styles.join(';')}"` : '';
 
-        let cellValue: any = cell.value;
-        if (cellValue === null || cellValue === undefined) cellValue = '';
-        if (typeof cellValue === 'object') {
-          if (Array.isArray((cellValue as any).richText)) {
-            cellValue = (cellValue as any).richText.map((t: any) => t.text || '').join('');
-          } else {
-            cellValue = (cellValue as any).result ?? (cellValue as any).formula ?? (cellValue as any).text ?? String(cellValue);
-          }
-        }
+        const valStr = formatCellValue(cell.value, cell.numFmt);
 
-        html += `<${tag}${colSpanStr}${rowSpanStr}${styleStr}>${String(cellValue)}</${tag}>`;
+        html += `<${tag}${colSpanStr}${rowSpanStr}${styleStr}>${valStr}</${tag}>`;
       }
 
       html += '</tr>';

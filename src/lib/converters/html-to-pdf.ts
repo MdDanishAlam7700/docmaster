@@ -6,8 +6,21 @@ export async function renderHtmlToPdf(html: string, filename: string): Promise<C
 
   const container = document.createElement('div');
   container.innerHTML = html;
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:#fff;padding:20px;font-family:Arial,sans-serif;line-height:1.6;';
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:20px;font-family:Arial,sans-serif;line-height:1.6;';
   document.body.appendChild(container);
+
+  const table = container.querySelector('table');
+  if (table) {
+    const tblWidth = table.style.width;
+    if (tblWidth && tblWidth.endsWith('px')) {
+      const widthVal = parseInt(tblWidth);
+      container.style.width = `${widthVal + 40}px`;
+    } else {
+      container.style.width = 'fit-content';
+    }
+  } else {
+    container.style.width = '800px';
+  }
 
   try {
     const canvas = await html2canvas(container, {

@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType, PageBreak } from 'docx';
 import * as mammoth from 'mammoth';
 import { ConversionResult } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
@@ -45,6 +45,8 @@ export async function docxToText(file: File): Promise<ConversionResult> {
 interface CellStyle {
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
   color?: string;
   bgColor?: string;
   fontSize?: string;
@@ -67,6 +69,10 @@ function parseStyle(style: string): CellStyle {
     if (!k || !v) continue;
     if (k === 'font-weight' && v === 'bold') s.bold = true;
     if (k === 'font-style' && v === 'italic') s.italic = true;
+    if (k === 'text-decoration') {
+      if (v.includes('underline')) s.underline = true;
+      if (v.includes('line-through')) s.strike = true;
+    }
     if (k === 'color') s.color = v;
     if (k === 'background-color') s.bgColor = v;
     if (k === 'font-size') s.fontSize = v;
@@ -90,10 +96,20 @@ function normalizeHex(c: string): string {
 
 function borderStyle(s?: string) {
   if (!s) return undefined;
+  const lower = s.toLowerCase();
+  if (lower.includes('none') || lower === '0px') {
+    return { style: BorderStyle.NONE, size: 0, color: 'AUTO' };
+  }
   const parts = s.split(' ');
   const size = parts[0] === '3px' ? 3 : parts[0] === '2px' ? 2 : 1;
   const color = normalizeHex(parts[2] || 'ccc');
-  return { style: BorderStyle.SINGLE, size, color };
+  
+  let bStyle: any = BorderStyle.SINGLE;
+  if (lower.includes('dotted')) bStyle = BorderStyle.DOTTED;
+  if (lower.includes('dashed')) bStyle = BorderStyle.DASHED;
+  if (lower.includes('double')) bStyle = BorderStyle.DOUBLE;
+  
+  return { style: bStyle, size, color };
 }
 
 function docxAlign(align?: string) {
@@ -128,6 +144,24 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
         const rows = Array.from(el.querySelectorAll('tr'));
         if (rows.length === 0) return;
 
+        const hasGridlines = el.classList.contains('gridlines') || el.className.includes('gridlines');
+
+        // Parse cols for columnWidths
+        const cols = Array.from(el.querySelectorAll('col'));
+        const columnWidthsDxa: number[] = [];
+        for (const col of cols) {
+          const colStyle = col.getAttribute('style') || '';
+          let wPx = 100;
+          const match = colStyle.match(/width:\s*(\d+)px/i);
+          if (match) {
+            wPx = parseInt(match[1]);
+          } else {
+            const wAttr = col.getAttribute('width');
+            if (wAttr) wPx = parseInt(wAttr);
+          }
+          columnWidthsDxa.push(Math.round(wPx * 15)); // 1px ≈ 15 DXA
+        }
+
         const tableRows: TableRow[] = [];
 
         for (const row of rows) {
@@ -146,13 +180,15 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
                 text: cellText,
                 bold: cellStyle.bold,
                 italics: cellStyle.italic,
+                underline: cellStyle.underline ? {} : undefined,
+                strike: cellStyle.strike,
                 color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
                 size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
+                font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
               }));
             }
 
             const cellChildren: (Paragraph | Table)[] = [];
-            // Process child elements in the cell (paragraphs, lists, etc.)
             const cellSubNodes = Array.from(cell.childNodes);
             if (cellSubNodes.length === 1 && cellSubNodes[0].nodeType === Node.TEXT_NODE) {
               cellChildren.push(new Paragraph({
@@ -165,18 +201,36 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
                 if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
                   hasContent = true;
                   cellChildren.push(new Paragraph({
-                    children: [new TextRun({ text: child.textContent || '' })],
+                    children: [new TextRun({
+                      text: child.textContent || '',
+                      bold: cellStyle.bold,
+                      italics: cellStyle.italic,
+                      underline: cellStyle.underline ? {} : undefined,
+                      strike: cellStyle.strike,
+                      color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
+                      size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
+                      font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
+                    })],
                     alignment: docxAlign(cellStyle.align),
                   }));
                 } else if (child.nodeType === Node.ELEMENT_NODE) {
                   hasContent = true;
                   const childEl = child as HTMLElement;
                   const childTag = childEl.tagName.toLowerCase();
-                  if (['p', 'span', 'b', 'strong', 'i', 'em', 'br', 'div'].includes(childTag)) {
+                  if (['p', 'span', 'b', 'strong', 'i', 'em', 'br', 'div', 'u', 'strike', 's'].includes(childTag)) {
                     const childRuns: TextRun[] = [];
                     childEl.childNodes.forEach(cn => {
                       if (cn.nodeType === Node.TEXT_NODE && (cn.textContent || '').trim()) {
-                        childRuns.push(new TextRun({ text: cn.textContent || '' }));
+                        childRuns.push(new TextRun({
+                          text: cn.textContent || '',
+                          bold: cellStyle.bold || childTag === 'b' || childTag === 'strong',
+                          italics: cellStyle.italic || childTag === 'i' || childTag === 'em',
+                          underline: cellStyle.underline || childTag === 'u' ? {} : undefined,
+                          strike: cellStyle.strike || childTag === 'strike' || childTag === 's',
+                          color: cellStyle.color ? normalizeHex(cellStyle.color) : undefined,
+                          size: cellStyle.fontSize ? Math.round(parseFloat(cellStyle.fontSize) * 2) : undefined,
+                          font: cellStyle.fontFamily ? cellStyle.fontFamily : undefined,
+                        }));
                       }
                     });
                     if (childRuns.length > 0) {
@@ -207,6 +261,14 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
             };
 
             const borders: any = {};
+            if (hasGridlines) {
+              const defaultGridBorder = { style: BorderStyle.SINGLE, size: 1, color: 'E2E8F0' };
+              borders.top = defaultGridBorder;
+              borders.bottom = defaultGridBorder;
+              borders.left = defaultGridBorder;
+              borders.right = defaultGridBorder;
+            }
+
             const topB = borderStyle(cellStyle.borderTop);
             const bottomB = borderStyle(cellStyle.borderBottom);
             const leftB = borderStyle(cellStyle.borderLeft);
@@ -243,13 +305,25 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
           tableRows.push(new TableRow({ children: docxCells }));
         }
 
-        // Borders for the whole table
         if (tableRows.length > 0) {
-          children.push(new Table({
+          const tableOptions: any = {
             rows: tableRows,
+            alignment: AlignmentType.CENTER,
             width: { size: 100, type: WidthType.PERCENTAGE },
-          }));
+            margins: {
+              top: 100,
+              bottom: 100,
+              left: 150,
+              right: 150,
+            }
+          };
+          if (columnWidthsDxa.length > 0) {
+            tableOptions.columnWidths = columnWidthsDxa;
+          }
+          children.push(new Table(tableOptions));
         }
+      } else if (tag === 'div' && (el.classList.contains('page-break') || el.style.pageBreakBefore === 'always' || el.style.breakBefore === 'page')) {
+        children.push(new Paragraph({ children: [new PageBreak()] }));
       } else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
         const level = parseInt(tag[1]) - 1;
         children.push(new Paragraph({
