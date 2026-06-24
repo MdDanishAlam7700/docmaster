@@ -110,10 +110,11 @@ function applyTint(hex: string, tint?: number): string {
 
 function cssColor(color: any): string {
   if (!color) return '';
-  // Handle direct string color values. If it's a 'lab()' function, which is unsupported, fallback to black.
+  // Handle direct string color values.
+  // Modern CSS color functions (oklch, oklab, lab, lch, color()) are not renderable
+  // by html2canvas — fall back to black for any match.
   if (typeof color === 'string') {
-    if (color.trim().toLowerCase().startsWith('lab(')) {
-      // Lab color conversion is not supported; using black as safe fallback.
+    if (/^\s*(oklch|oklab|lab|lch|color)\s*\(/i.test(color)) {
       return '#000000';
     }
     return color;
