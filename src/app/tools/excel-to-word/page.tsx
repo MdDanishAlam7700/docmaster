@@ -2,107 +2,62 @@
 
 import { ToolPageTemplate } from '@/components/converter/ToolPageTemplate';
 import { ArrowRightLeft } from 'lucide-react';
-import { excelToHtml } from '@/lib/converters/excel-converter';
 import { UploadedFile, ConversionResult } from '@/lib/types';
 
 export default function ExcelToWordPage() {
   const handleConvert = async (files: UploadedFile[]): Promise<ConversionResult> => {
-    // Step 1: Convert Excel → styled HTML (preserves cell colors, borders, fonts)
+    const { excelToHtml } = await import('@/lib/converters/excel-converter');
+    const { renderHtmlToCanvas } = await import('@/lib/converters/html-to-pdf');
+    const { Document, Packer, Paragraph, ImageRun } = await import('docx');
+
+    // Step 1: Convert Excel → richly styled HTML (cell colors, borders,
+    //         merged cells, column widths, row heights, font styles)
     const htmlResult = await excelToHtml(files[0].file);
     const html = await htmlResult.file.text();
 
-    // Step 2: Render the HTML visually using html2canvas (bundled in html2pdf.js)
-    // then embed each rendered image in a Word document.
-    // This approach preserves 100% visual fidelity: borders, cell fills, merged cells, etc.
+    // Step 2: Render the HTML visually using html2canvas (standalone package).
+    //         This captures the exact visual appearance — borders, fills, etc.
+    const canvas = await renderHtmlToCanvas(html, { scale: 2, maxWidthPx: 1200 });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const html2pdfModule = (await import('html2pdf.js' as any)).default as any;
-    void html2pdfModule; // We only need html2canvas which is bundled inside it
+    // Step 3: Export canvas to JPEG
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('Canvas render failed'))),
+        'image/jpeg',
+        0.92,
+      );
+    });
+    const imageData = new Uint8Array(await blob.arrayBuffer());
 
-    // Access html2canvas via the global it registers when html2pdf.js loads
-    // html2pdf.js bundles and exposes html2canvas as a named export/global
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let html2canvas: any = (window as any).html2canvas;
+    // Step 4: Compute display size in DOCX
+    // Canvas was rendered at 2× scale, so display size = canvas / 2
+    const imgW = Math.round(canvas.width / 2);
+    const imgH = Math.round(canvas.height / 2);
 
-    if (!html2canvas) {
-      // Fallback: render HTML using a blob URL + iframe screenshot approach
-      // Build DOCX directly from the HTML string with full table styling
-      const { htmlToDocx } = await import('@/lib/converters/docx-converter');
-      return htmlToDocx(html, files[0].name);
-    }
+    // Fit within A4 page content area (595pt - 2×36pt margins = 523pt)
+    // 1 pt = 96/72 px at screen resolution
+    const maxWidthPx = Math.round(523 * 96 / 72);  // ≈ 697px
+    const scale = imgW > maxWidthPx ? maxWidthPx / imgW : 1;
+    const finalW = Math.round(imgW * scale);
+    const finalH = Math.round(imgH * scale);
 
-    // Create offscreen container with the Excel HTML
-    const container = document.createElement('div');
-    container.style.cssText = [
-      'position:fixed',
-      'left:-9999px',
-      'top:0',
-      'background:#ffffff',
-      'padding:0',
-      'margin:0',
-      'font-family:Arial,Helvetica,sans-serif',
-      'font-size:11px',
-      'line-height:1.4',
-    ].join(';');
-    container.innerHTML = html;
-    document.body.appendChild(container);
-
-    let imageData: Uint8Array;
-    let imgW: number;
-    let imgH: number;
-
-    try {
-      const canvas: HTMLCanvasElement = await html2canvas(container, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        logging: false,
-      });
-
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => {
-          if (b) resolve(b);
-          else reject(new Error('Failed to render Excel sheet'));
-        }, 'image/jpeg', 0.92);
-      });
-      imageData = new Uint8Array(await blob.arrayBuffer());
-
-      // Display size in DOCX pixels (canvas was at 2× so divide by 2)
-      imgW = Math.round(canvas.width / 2);
-      imgH = Math.round(canvas.height / 2);
-    } finally {
-      if (document.body.contains(container)) {
-        document.body.removeChild(container);
-      }
-    }
-
-    // Step 3: Embed rendered image into a DOCX document
-    const { Document, Packer, Paragraph, ImageRun, SectionType } = await import('docx');
-
-    // Fit within A4 page (595pt wide, 842pt tall) with 36pt margins each side
-    const maxWidthPt = 595 - 72; // 523pt available
-    const maxWidthPx = Math.round(maxWidthPt * 96 / 72); // ~697px
-
-    let finalW = imgW;
-    let finalH = imgH;
-    if (finalW > maxWidthPx) {
-      const ratio = maxWidthPx / finalW;
-      finalW = maxWidthPx;
-      finalH = Math.round(finalH * ratio);
-    }
-
-    // Page dimensions in twips
-    const pageWidthTwips = Math.round(595 * 20);  // A4 width
-    const pageHeightTwips = Math.round(Math.max(842, finalH * 72 / 96 + 72) * 20); // dynamic height
-    const marginTwips = Math.round(36 * 20); // 36pt margins
+    // Step 5: DOCX page dimensions in twips (1pt = 20 twips)
+    //         Use A4 portrait with 36pt (half-inch) margins
+    const A4_W_TWIPS = 11906;   // 210mm × 56.69 twips/mm
+    const A4_H_TWIPS = Math.max(16838, Math.round((finalH * 72 / 96 + 72) * 20));
+    const MARGIN_TWIPS = 720;   // 36pt × 20 = 720 twips
 
     const doc = new Document({
       sections: [{
         properties: {
-          type: SectionType.CONTINUOUS,
           page: {
-            size: { width: pageWidthTwips, height: pageHeightTwips },
-            margin: { top: marginTwips, right: marginTwips, bottom: marginTwips, left: marginTwips },
+            size: { width: A4_W_TWIPS, height: A4_H_TWIPS },
+            margin: {
+              top: MARGIN_TWIPS,
+              right: MARGIN_TWIPS,
+              bottom: MARGIN_TWIPS,
+              left: MARGIN_TWIPS,
+            },
           },
         },
         children: [
@@ -135,7 +90,7 @@ export default function ExcelToWordPage() {
   return (
     <ToolPageTemplate
       title="Excel to Word"
-      description="Convert Excel spreadsheets to Word documents with full formatting — cell colors, borders, merged cells, and fonts preserved."
+      description="Convert Excel spreadsheets to Word — all cell formatting, borders, colors, merged cells, and column widths are preserved."
       icon={<ArrowRightLeft className="h-7 w-7" />}
       multiple={false}
       accept={{
