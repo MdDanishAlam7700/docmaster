@@ -13,45 +13,49 @@ export default function PdfToHtmlPage() {
 
     const file = files[0].file;
     const bytes = await file.arrayBuffer();
-    const pdf = await getDocument({ data: bytes }).promise;
-    const total = pdf.numPages;
-    const pageSections: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pdf: any = null;
 
-    for (let i = 1; i <= total; i++) {
-      if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    try {
+      pdf = await getDocument({ data: bytes }).promise;
+      const total = pdf.numPages;
+      const pageSections: string[] = [];
 
-      const page = await pdf.getPage(i);
-      // Render at 1.5× — good balance of quality vs file size for HTML embedding
-      const viewport = page.getViewport({ scale: 1.5 });
+      for (let i = 1; i <= total; i++) {
+        if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d')!;
+        const page = await pdf.getPage(i);
+        // Render at 1.5× — good balance of quality vs file size for HTML embedding
+        const viewport = page.getViewport({ scale: 1.5 });
 
-      // White background for pages that may be transparent
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d')!;
 
-      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+        // White background for pages that may be transparent
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Embed as PNG for lossless quality (logos, text stay crisp)
-      const dataUrl = canvas.toDataURL('image/png');
+        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
 
-      // Natural page display width in CSS pixels (at 1× scale = 96dpi-equivalent)
-      const displayWidth = Math.round(viewport.width / 1.5);
-      const displayHeight = Math.round(viewport.height / 1.5);
+        // Embed as PNG for lossless quality (logos, text stay crisp)
+        const dataUrl = canvas.toDataURL('image/png');
 
-      pageSections.push(`
-  <section class="page" style="width:${displayWidth}px;height:${displayHeight}px">
-    <img src="${dataUrl}" width="${displayWidth}" height="${displayHeight}" alt="Page ${i}" loading="lazy">
-    <div class="page-label">Page ${i}</div>
-  </section>`);
+        // Natural page display width in CSS pixels (at 1× scale = 96dpi-equivalent)
+        const displayWidth = Math.round(viewport.width / 1.5);
+        const displayHeight = Math.round(viewport.height / 1.5);
 
-      opts?.onProgress?.(Math.round((i / total) * 100), `Rendering page ${i} of ${total}`);
-    }
+        pageSections.push(`
+    <section class="page" style="width:${displayWidth}px;height:${displayHeight}px">
+      <img src="${dataUrl}" width="${displayWidth}" height="${displayHeight}" alt="Page ${i}" loading="lazy">
+      <div class="page-label">Page ${i}</div>
+    </section>`);
 
-    const html = `<!DOCTYPE html>
+        opts?.onProgress?.(Math.round((i / total) * 100), `Rendering page ${i} of ${total}`);
+      }
+
+      const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -101,11 +105,14 @@ export default function PdfToHtmlPage() {
 </body>
 </html>`;
 
-    return {
-      file: new Blob([html], { type: 'text/html' }),
-      filename: files[0].name.replace(/\.[^.]+$/, '.html'),
-      mimeType: 'text/html',
-    };
+      return {
+        file: new Blob([html], { type: 'text/html' }),
+        filename: files[0].name.replace(/\.[^.]+$/, '.html'),
+        mimeType: 'text/html',
+      };
+    } finally {
+      if (pdf) await pdf.destroy();
+    }
   };
 
   return (

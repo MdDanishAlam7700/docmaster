@@ -507,99 +507,106 @@ export async function pdfToExcel(
   GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
   const bytes = await file.arrayBuffer();
-  const pdf = await getDocument({ data: bytes }).promise;
-  const totalPages = pdf.numPages;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pdf: any = null;
 
-  const ExcelJS = await import('exceljs');
-  const workbook = new ExcelJS.Workbook();
+  try {
+    pdf = await getDocument({ data: bytes }).promise;
+    const totalPages = pdf.numPages;
 
-  for (let p = 1; p <= totalPages; p++) {
-    if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    options?.onProgress?.(Math.round((p / totalPages) * 100), `Processing page ${p} of ${totalPages}`);
+    const ExcelJS = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
 
-    const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    
-    const items: { str: string; x: number; y: number; height: number }[] = [];
-    for (const item of content.items) {
-      const it = item as any;
-      if (!it.str || !it.str.trim()) continue;
-      items.push({
-        str: it.str,
-        x: it.transform[4],
-        y: it.transform[5],
-        height: it.height || 12,
-      });
-    }
+    for (let p = 1; p <= totalPages; p++) {
+      if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      options?.onProgress?.(Math.round((p / totalPages) * 100), `Processing page ${p} of ${totalPages}`);
 
-    const sheetName = `Page ${p}`;
-    const sheet = workbook.addWorksheet(sheetName);
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      
+      const items: { str: string; x: number; y: number; height: number }[] = [];
+      for (const item of content.items) {
+        const it = item as any;
+        if (!it.str || !it.str.trim()) continue;
+        items.push({
+          str: it.str,
+          x: it.transform[4],
+          y: it.transform[5],
+          height: it.height || 12,
+        });
+      }
 
-    if (items.length === 0) continue;
+      const sheetName = `Page ${p}`;
+      const sheet = workbook.addWorksheet(sheetName);
 
-    const Y_THRESHOLD = 4;
-    const rowClusters: typeof items[] = [];
-    const sortedByY = [...items].sort((a, b) => b.y - a.y);
+      if (items.length === 0) continue;
 
-    for (const item of sortedByY) {
-      let placed = false;
+      const Y_THRESHOLD = 4;
+      const rowClusters: typeof items[] = [];
+      const sortedByY = [...items].sort((a, b) => b.y - a.y);
+
+      for (const item of sortedByY) {
+        let placed = false;
+        for (const cluster of rowClusters) {
+          if (Math.abs(cluster[0].y - item.y) < Y_THRESHOLD) {
+            cluster.push(item);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) rowClusters.push([item]);
+      }
+
       for (const cluster of rowClusters) {
-        if (Math.abs(cluster[0].y - item.y) < Y_THRESHOLD) {
-          cluster.push(item);
-          placed = true;
-          break;
-        }
+        cluster.sort((a, b) => a.x - b.x);
       }
-      if (!placed) rowClusters.push([item]);
-    }
 
-    for (const cluster of rowClusters) {
-      cluster.sort((a, b) => a.x - b.x);
-    }
+      rowClusters.sort((a, b) => b[0].y - a[0].y);
 
-    rowClusters.sort((a, b) => b[0].y - a[0].y);
+      const X_GAP_THRESHOLD = 15;
 
-    const X_GAP_THRESHOLD = 15;
+      for (const cluster of rowClusters) {
+        const rowCells: string[] = [];
+        let currentCellText = '';
+        let lastX = -1;
 
-    for (const cluster of rowClusters) {
-      const rowCells: string[] = [];
-      let currentCellText = '';
-      let lastX = -1;
+        for (const item of cluster) {
+          if (lastX === -1) {
+            currentCellText = item.str;
+          } else if (item.x - lastX > X_GAP_THRESHOLD) {
+            rowCells.push(currentCellText);
+            currentCellText = item.str;
+          } else {
+            const space = currentCellText.endsWith(' ') || item.str.startsWith(' ') ? '' : ' ';
+            currentCellText += space + item.str;
+          }
+          lastX = item.x + (item.str.length * 6);
+        }
 
-      for (const item of cluster) {
-        if (lastX === -1) {
-          currentCellText = item.str;
-        } else if (item.x - lastX > X_GAP_THRESHOLD) {
+        if (currentCellText) {
           rowCells.push(currentCellText);
-          currentCellText = item.str;
-        } else {
-          const space = currentCellText.endsWith(' ') || item.str.startsWith(' ') ? '' : ' ';
-          currentCellText += space + item.str;
         }
-        lastX = item.x + (item.str.length * 6);
+
+        sheet.addRow(rowCells);
       }
 
-      if (currentCellText) {
-        rowCells.push(currentCellText);
-      }
-
-      sheet.addRow(rowCells);
+      sheet.columns.forEach((column) => {
+        let maxLen = 10;
+        column.eachCell?.({ includeEmpty: false }, (cell) => {
+          const valLen = String(cell.value || '').length;
+          if (valLen > maxLen) maxLen = valLen;
+        });
+        column.width = Math.min(maxLen + 2, 50);
+      });
     }
 
-    sheet.columns.forEach((column) => {
-      let maxLen = 10;
-      column.eachCell?.({ includeEmpty: false }, (cell) => {
-        const valLen = String(cell.value || '').length;
-        if (valLen > maxLen) maxLen = valLen;
-      });
-      column.width = Math.min(maxLen + 2, 50);
-    });
+    const buffer = await workbook.xlsx.writeBuffer();
+    return {
+      file: new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      filename: changeExtension(file.name, 'xlsx'),
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+  } finally {
+    if (pdf) await pdf.destroy();
   }
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  return {
-    file: new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-    filename: changeExtension(file.name, 'xlsx'),
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  };
 }

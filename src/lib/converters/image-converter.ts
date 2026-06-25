@@ -41,7 +41,7 @@ export async function resizeImage(file: File, width: number, height: number, mai
   const outputMime = getMimeForExt(ext);
   const buffer = await image.getBuffer(jimpMime);
   return {
-    file: new Blob([blobPart(buffer as unknown as Uint8Array)], { type: outputMime }),
+    file: new Blob([blobPart(buffer as Uint8Array)], { type: outputMime }),
     filename: changeExtension(file.name, ext),
     mimeType: outputMime,
   };
@@ -57,7 +57,7 @@ export async function compressImage(file: File, quality: number = 80): Promise<C
   const outputMime = isJpeg ? 'image/jpeg' : 'image/png';
   const buffer = await image.getBuffer(jimpMime, isJpeg ? { quality } as any : undefined);
   return {
-    file: new Blob([blobPart(buffer as unknown as Uint8Array)], { type: outputMime }),
+    file: new Blob([blobPart(buffer as Uint8Array)], { type: outputMime }),
     filename: changeExtension(file.name, isJpeg ? 'jpg' : 'png'),
     mimeType: outputMime,
   };
@@ -73,7 +73,7 @@ export async function cropImage(file: File, x: number, y: number, w: number, h: 
   const outputMime = getMimeForExt(ext);
   const buffer = await image.getBuffer(jimpMime);
   return {
-    file: new Blob([blobPart(buffer as unknown as Uint8Array)], { type: outputMime }),
+    file: new Blob([blobPart(buffer as Uint8Array)], { type: outputMime }),
     filename: changeExtension(file.name, ext),
     mimeType: outputMime,
   };
@@ -106,7 +106,7 @@ export async function convertImageFormat(file: File, targetFormat: 'png' | 'jpeg
   const outputMime = outputMimeMap[targetFormat] || 'image/png';
   const buffer = await image.getBuffer(jimpMime);
   return {
-    file: new Blob([blobPart(buffer as unknown as Uint8Array)], { type: outputMime }),
+    file: new Blob([blobPart(buffer as Uint8Array)], { type: outputMime }),
     filename: changeExtension(file.name, targetFormat === 'jpeg' ? 'jpg' : targetFormat),
     mimeType: outputMime,
   };

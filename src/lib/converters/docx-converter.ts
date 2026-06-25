@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType, PageBreak, VerticalMergeType, UnderlineType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType, PageBreak, VerticalMergeType, UnderlineType, ITableCellOptions, ITableOptions, VerticalAlign } from 'docx';
 import * as mammoth from 'mammoth';
 import { ConversionResult } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
@@ -88,33 +88,140 @@ function parseStyle(style: string): CellStyle {
   return s;
 }
 
+const COLOR_NAMES: Record<string, string> = {
+  aliceblue: 'F0F8FF', antiquewhite: 'FAEBD7', aqua: '00FFFF', aquamarine: '7FFFD4', azure: 'F0FFFF',
+  beige: 'F5F5DC', bisque: 'FFE4C4', black: '000000', blanchedalmond: 'FFEBCD', blue: '0000FF',
+  blueviolet: '8A2BE2', brown: 'A52A2A', burlywood: 'DEB887', cadetblue: '5F9EA0', chartreuse: '7FFF00',
+  chocolate: 'D2691E', coral: 'FF7F50', cornflowerblue: '6495ED', cornsilk: 'FFF8DC', crimson: 'DC143C',
+  cyan: '00FFFF', darkblue: '00008B', darkcyan: '008B8B', darkgoldenrod: 'B8860B', darkgray: 'A9A9A9',
+  darkgrey: 'A9A9A9', darkgreen: '006400', darkkhaki: 'BDB76B', darkmagenta: '8B008B', darkolivegreen: '556B2F',
+  darkorange: 'FF8C00', darkorchid: '9932CC', darkred: '8B0000', darksalmon: 'E9967A', darkseagreen: '8FBC8F',
+  darkslateblue: '483D8B', darkslategray: '2F4F4F', darkslategrey: '2F4F4F', darkturquoise: '00CED1',
+  darkviolet: '9400D3', deeppink: 'FF1493', deepskyblue: '00BFFF', dimgray: '696969', dimgrey: '696969',
+  dodgerblue: '1E90FF', firebrick: 'B22222', floralwhite: 'FFFAF0', forestgreen: '228B22', fuchsia: 'FF00FF',
+  gainsboro: 'DCDCDC', ghostwhite: 'F8F8FF', gold: 'FFD700', goldenrod: 'DAA520', gray: '808080',
+  grey: '808080', green: '008000', greenyellow: 'ADFF2F', honeydew: 'F0FFF0', hotpink: 'FF69B4',
+  indianred: 'CD5C5C', indigo: '4B0082', ivory: 'FFFFF0', khaki: 'F0E68C', lavender: 'E6E6FA',
+  lavenderblush: 'FFF0F5', lawngreen: '7CFC00', lemonchiffon: 'FFFACD', lightblue: 'ADD8E6',
+  lightcoral: 'F08080', lightcyan: 'E0FFFF', lightgoldenrodyellow: 'FAFAD2', lightgray: 'D3D3D3',
+  lightgrey: 'D3D3D3', lightgreen: '90EE90', lightpink: 'FFB6C1', lightsalmon: 'FFA07A',
+  lightseagreen: '20B2AA', lightskyblue: '87CEFA', lightslategray: '778899', lightslategrey: '778899',
+  lightsteelblue: 'B0C4DE', lightyellow: 'FFFFE0', lime: '00FF00', limegreen: '32CD32', linen: 'FAF0E6',
+  magenta: 'FF00FF', maroon: '800000', mediumaquamarine: '66CDAA', mediumblue: '0000CD',
+  mediumorchid: 'BA55D3', mediumpurple: '9370DB', mediumseagreen: '3CB371', mediumslateblue: '7B68EE',
+  mediumspringgreen: '00FA9A', mediumturquoise: '48D1CC', mediumvioletred: 'C71585', midnightblue: '191970',
+  mintcream: 'F5FFFA', mistyrose: 'FFE4E1', moccasin: 'FFE4B5', navajowhite: 'FFDEAD', navy: '000080',
+  oldlace: 'FDF5E6', olive: '808000', olivedrab: '6B8E23', orange: 'FFA500', orangered: 'FF4500',
+  orchid: 'DA70D6', palegoldenrod: 'EEE8AA', palegreen: '98FB98', paleturquoise: 'AFEEEE',
+  palevioletred: 'DB7093', papayawhip: 'FFEFD5', peachpuff: 'FFDAB9', peru: 'CD853F', pink: 'FFC0CB',
+  plum: 'DDA0DD', powderblue: 'B0E0E6', purple: '800080', rebeccapurple: '663399', red: 'FF0000',
+  rosybrown: 'BC8F8F', royalblue: '4169E1', saddlebrown: '8B4513', salmon: 'FA8072', sandybrown: 'F4A460',
+  seagreen: '2E8B57', seashell: 'FFF5EE', sienna: 'A0522D', silver: 'C0C0C0', skyblue: '87CEEB',
+  slateisland: '6A5ACD', slateblue: '6A5ACD', slategray: '708090', slategrey: '708090', snow: 'FFFAFA',
+  springgreen: '00FF7F', steelblue: '4682B4', tan: 'D2B48C', teal: '008080', thistle: 'D8BFD8',
+  tomato: 'FF6347', turquoise: '40E0D0', violet: 'EE82EE', wheat: 'F5DEB3', white: 'FFFFFF',
+  whitesmoke: 'F5F5F5', yellow: 'FFFF00', yellowgreen: '9ACD32'
+};
+
 function normalizeHex(c: string): string {
-  let h = c.replace('#', '');
-  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
-  return h.toUpperCase();
+  if (!c) return '000000';
+  const clean = c.trim().toLowerCase();
+  if (clean === 'transparent') return 'FFFFFF';
+
+  if (COLOR_NAMES[clean]) return COLOR_NAMES[clean];
+
+  if (clean.startsWith('#')) {
+    let hex = clean.replace('#', '');
+    if (hex.length === 3) {
+      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    }
+    return hex.slice(0, 6).toUpperCase();
+  }
+
+  const rgbMatch = clean.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)$/);
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1]).toString(16).padStart(2, '0');
+    const g = parseInt(rgbMatch[2]).toString(16).padStart(2, '0');
+    const b = parseInt(rgbMatch[3]).toString(16).padStart(2, '0');
+    return (r + g + b).toUpperCase();
+  }
+
+  if (/^[0-9a-fA-F]{3,6}$/.test(clean)) {
+    let hex = clean;
+    if (hex.length === 3) {
+      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    }
+    return hex.toUpperCase();
+  }
+
+  return '000000';
+}
+
+function parseBorderShorthand(s: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let parenDepth = 0;
+  
+  for (let i = 0; i < s.length; i++) {
+    const char = s[i];
+    if (char === '(') {
+      parenDepth++;
+      current += char;
+    } else if (char === ')') {
+      parenDepth--;
+      current += char;
+    } else if (char === ' ' && parenDepth === 0) {
+      if (current) {
+        parts.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current) {
+    parts.push(current);
+  }
+  return parts;
 }
 
 function borderStyle(s?: string) {
   if (!s) return undefined;
-  const lower = s.toLowerCase();
+  const lower = s.trim().toLowerCase();
   if (lower.includes('none') || lower === '0px') {
     return { style: BorderStyle.NONE, size: 0, color: 'AUTO' };
   }
-  const parts = s.split(' ');
-  const size = parts[0] === '3px' ? 3 : parts[0] === '2px' ? 2 : 1;
-  const color = normalizeHex(parts[2] || 'ccc');
-  
-  let bStyle: any = BorderStyle.SINGLE;
-  if (lower.includes('dotted')) bStyle = BorderStyle.DOTTED;
-  if (lower.includes('dashed')) bStyle = BorderStyle.DASHED;
-  if (lower.includes('double')) bStyle = BorderStyle.DOUBLE;
-  
+
+  const parts = parseBorderShorthand(lower);
+  let size = 1;
+  let bStyle: typeof BorderStyle[keyof typeof BorderStyle] = BorderStyle.SINGLE;
+  let color = 'CCCCCC';
+
+  for (const part of parts) {
+    if (part.endsWith('px') || part.endsWith('pt') || ['thin', 'medium', 'thick'].includes(part)) {
+      if (part === 'thin') size = 1;
+      else if (part === 'medium') size = 2;
+      else if (part === 'thick') size = 3;
+      else {
+        const val = parseFloat(part);
+        size = isNaN(val) ? 1 : Math.round(val);
+      }
+    } else if (['solid', 'dotted', 'dashed', 'double'].includes(part)) {
+      if (part === 'dotted') bStyle = BorderStyle.DOTTED;
+      else if (part === 'dashed') bStyle = BorderStyle.DASHED;
+      else if (part === 'double') bStyle = BorderStyle.DOUBLE;
+      else bStyle = BorderStyle.SINGLE;
+    } else {
+      color = normalizeHex(part);
+    }
+  }
+
   return { style: bStyle, size, color };
 }
 
-function docxAlign(align?: string) {
+function docxAlign(align?: string): typeof AlignmentType[keyof typeof AlignmentType] | undefined {
   if (!align) return undefined;
-  const map: any = {
+  const map: Record<string, typeof AlignmentType[keyof typeof AlignmentType]> = {
     left: AlignmentType.LEFT,
     center: AlignmentType.CENTER,
     right: AlignmentType.RIGHT,
@@ -168,7 +275,7 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
           isMaster: boolean;
           colSpan: number;
           rowSpan: number;
-          vMerge?: string;
+          vMerge?: typeof VerticalMergeType[keyof typeof VerticalMergeType];
           hMerge: boolean;
         }[][] = [];
 
@@ -331,16 +438,7 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
               cellChildren.push(new Paragraph({ children: [] }));
             }
 
-            const docxCellOptions: any = {
-              children: cellChildren,
-              columnSpan: colSpan > 1 ? colSpan : undefined,
-            };
-
-            if (gridCell.vMerge) {
-              docxCellOptions.vMerge = gridCell.vMerge;
-            }
-
-            const borders: any = {};
+            const borders: Record<string, any> = {};
             if (hasGridlines) {
               const defaultGridBorder = { style: BorderStyle.SINGLE, size: 1, color: 'E2E8F0' };
               borders.top = defaultGridBorder;
@@ -357,27 +455,21 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
             if (bottomB) borders.bottom = bottomB;
             if (leftB) borders.left = leftB;
             if (rightB) borders.right = rightB;
-            if (Object.keys(borders).length > 0) {
-              docxCellOptions.borders = borders;
-            }
 
-            if (cellStyle.bgColor) {
-              docxCellOptions.shading = { type: ShadingType.CLEAR, fill: normalizeHex(cellStyle.bgColor) };
-            }
+            const widthVal = cellStyle.width ? parseFloat(cellStyle.width) : NaN;
 
-            if (cellStyle.valign) {
-              docxCellOptions.verticalAlign = cellStyle.valign === 'top' ? 'top' as any : cellStyle.valign === 'bottom' ? 'bottom' as any : 'center' as any;
-            }
-
-            if (cellStyle.width) {
-              const widthVal = parseFloat(cellStyle.width);
-              if (!isNaN(widthVal)) {
-                docxCellOptions.width = {
-                  size: Math.round(widthVal * 15), // Convert px to DXA (1px ≈ 15 DXA)
-                  type: WidthType.DXA,
-                };
-              }
-            }
+            const docxCellOptions: ITableCellOptions = {
+              children: cellChildren,
+              columnSpan: colSpan > 1 ? colSpan : undefined,
+              verticalMerge: gridCell.vMerge,
+              borders: Object.keys(borders).length > 0 ? (borders as any) : undefined,
+              shading: cellStyle.bgColor ? { type: ShadingType.CLEAR, fill: normalizeHex(cellStyle.bgColor) } : undefined,
+              verticalAlign: cellStyle.valign === 'top' ? VerticalAlign.TOP : cellStyle.valign === 'bottom' ? VerticalAlign.BOTTOM : VerticalAlign.CENTER,
+              width: !isNaN(widthVal) ? {
+                size: Math.round(widthVal * 15),
+                type: WidthType.DXA,
+              } : undefined,
+            };
 
             docxCells.push(new TableCell(docxCellOptions));
           }
@@ -386,7 +478,7 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
         }
 
         if (tableRows.length > 0) {
-          const tableOptions: any = {
+          const tableOptions: ITableOptions = {
             rows: tableRows,
             alignment: AlignmentType.CENTER,
             width: { size: 100, type: WidthType.PERCENTAGE },
@@ -395,11 +487,9 @@ export async function htmlToDocx(html: string, filename: string): Promise<Conver
               bottom: 100,
               left: 150,
               right: 150,
-            }
+            },
+            columnWidths: columnWidthsDxa.length > 0 ? columnWidthsDxa : undefined,
           };
-          if (columnWidthsDxa.length > 0) {
-            tableOptions.columnWidths = columnWidthsDxa;
-          }
           children.push(new Table(tableOptions));
         }
       } else if (tag === 'div' && (el.classList.contains('page-break') || el.style.pageBreakBefore === 'always' || el.style.breakBefore === 'page')) {

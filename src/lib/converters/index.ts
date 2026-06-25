@@ -1,7 +1,7 @@
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { ConversionResult, ConverterOptions } from '@/lib/types';
 import { changeExtension } from '@/lib/utils';
-import { Document, Packer, Paragraph, TextRun, PageBreak } from 'docx';
+import { Document, Packer, Paragraph, TextRun, PageBreak, ISectionOptions } from 'docx';
 export { docxToHtml, docxToText, htmlToDocx, textToDocx, textToHtml, docxToExcel } from './docx-converter';
 export { csvToExcel, excelToCsv, excelToHtml, excelToJson, htmlTableToExcel, pdfToExcel } from './excel-converter';
 export { resizeImage, compressImage, cropImage, convertImageFormat } from './image-converter';
@@ -232,13 +232,18 @@ export async function ocrPdf(
   const { createWorker } = await import('tesseract.js');
 
   const bytes = await file.arrayBuffer();
-  const pdf = await getDocument({ data: bytes }).promise;
-  const totalPages = pdf.numPages;
-
-  const worker = await createWorker('eng');
-  let fullText = '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pdf: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let worker: any = null;
 
   try {
+    pdf = await getDocument({ data: bytes }).promise;
+    const totalPages = pdf.numPages;
+
+    worker = await createWorker('eng');
+    let fullText = '';
+
     for (let i = 1; i <= totalPages; i++) {
       onProgress?.(i, totalPages);
 
@@ -260,15 +265,16 @@ export async function ocrPdf(
       const { data: { text } } = await worker.recognize(blob);
       fullText += `--- Page ${i} of ${totalPages} ---\n${text.trim()}\n\n`;
     }
-  } finally {
-    await worker.terminate();
-  }
 
-  return {
-    file: new Blob([fullText.trim()], { type: 'text/plain' }),
-    filename: changeExtension(file.name, 'txt'),
-    mimeType: 'text/plain',
-  };
+    return {
+      file: new Blob([fullText.trim()], { type: 'text/plain' }),
+      filename: changeExtension(file.name, 'txt'),
+      mimeType: 'text/plain',
+    };
+  } finally {
+    if (worker) await worker.terminate();
+    if (pdf) await pdf.destroy();
+  }
 }
 
 export async function flattenPdf(file: File): Promise<ConversionResult> {
@@ -289,88 +295,93 @@ export async function pdfToDocx(file: File, options?: ConverterOptions): Promise
   const { Document: DocxDocument, Packer: DocxPacker, Paragraph: DocxParagraph, ImageRun, SectionType } = await import('docx');
 
   const bytes = await file.arrayBuffer();
-  const pdf = await getDocument({ data: bytes }).promise;
-  const total = pdf.numPages;
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sections: any[] = [];
+  let pdf: any = null;
 
-  for (let p = 1; p <= total; p++) {
-    if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  try {
+    pdf = await getDocument({ data: bytes }).promise;
+    const total = pdf.numPages;
+    const sections: ISectionOptions[] = [];
 
-    const page = await pdf.getPage(p);
-    // Render at 2× scale for sharp, high-resolution output
-    const viewport = page.getViewport({ scale: 2 });
+    for (let p = 1; p <= total; p++) {
+      if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas 2D context unavailable');
+      const page = await pdf.getPage(p);
+      // Render at 2× scale for sharp, high-resolution output
+      const viewport = page.getViewport({ scale: 2 });
 
-    // Fill white background (PDF pages may be transparent)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      // Fill white background (PDF pages may be transparent)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Export page as JPEG
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((b) => {
-        if (b) resolve(b);
-        else reject(new Error(`Failed to render page ${p} as image`));
-      }, 'image/jpeg', 0.92);
-    });
-    const imageData = new Uint8Array(await blob.arrayBuffer());
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
 
-    // PDF page dimensions in PDF points (72 dpi equivalent), at scale 1
-    const pageWidthPt = viewport.width / 2;
-    const pageHeightPt = viewport.height / 2;
+      // Export page as JPEG
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b) resolve(b);
+          else reject(new Error(`Failed to render page ${p} as image`));
+        }, 'image/jpeg', 0.92);
+      });
+      const imageData = new Uint8Array(await blob.arrayBuffer());
 
-    // DOCX page size in twips (1 pt = 20 twips)
-    const pageWidthTwips = Math.round(pageWidthPt * 20);
-    const pageHeightTwips = Math.round(pageHeightPt * 20);
+      // PDF page dimensions in PDF points (72 dpi equivalent), at scale 1
+      const pageWidthPt = viewport.width / 2;
+      const pageHeightPt = viewport.height / 2;
 
-    // Image display size in DOCX in pixels at 96 dpi
-    // 1 pt = 96/72 px = 1.333 px → twips/15 = pixels
-    const imgW = Math.round(pageWidthTwips / 15);
-    const imgH = Math.round(pageHeightTwips / 15);
+      // DOCX page size in twips (1 pt = 20 twips)
+      const pageWidthTwips = Math.round(pageWidthPt * 20);
+      const pageHeightTwips = Math.round(pageHeightPt * 20);
 
-    sections.push({
-      properties: {
-        type: p > 1 ? SectionType.NEXT_PAGE : undefined,
-        page: {
-          size: { width: pageWidthTwips, height: pageHeightTwips },
-          margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      // Image display size in DOCX in pixels at 96 dpi
+      // 1 pt = 96/72 px = 1.333 px → twips/15 = pixels
+      const imgW = Math.round(pageWidthTwips / 15);
+      const imgH = Math.round(pageHeightTwips / 15);
+
+      sections.push({
+        properties: {
+          type: p > 1 ? SectionType.NEXT_PAGE : undefined,
+          page: {
+            size: { width: pageWidthTwips, height: pageHeightTwips },
+            margin: { top: 0, right: 0, bottom: 0, left: 0 },
+          },
         },
-      },
-      children: [
-        new DocxParagraph({
-          children: [
-            new ImageRun({
-              data: imageData,
-              transformation: { width: imgW, height: imgH },
-              type: 'jpg',
-            }),
-          ],
-          spacing: { before: 0, after: 0, line: 240, lineRule: 'exact' },
-        }),
-      ],
-    });
+        children: [
+          new DocxParagraph({
+            children: [
+              new ImageRun({
+                data: imageData,
+                transformation: { width: imgW, height: imgH },
+                type: 'jpg',
+              }),
+            ],
+            spacing: { before: 0, after: 0, line: 240, lineRule: 'exact' },
+          }),
+        ],
+      });
 
-    options?.onProgress?.(Math.round((p / total) * 100), `Rendering page ${p} of ${total}`);
+      options?.onProgress?.(Math.round((p / total) * 100), `Rendering page ${p} of ${total}`);
+    }
+
+    const doc = new DocxDocument({ sections });
+    const buffer = await DocxPacker.toBuffer(doc);
+
+    return {
+      file: new Blob([new Uint8Array(buffer)], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+      filename: changeExtension(file.name, 'docx'),
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
+  } finally {
+    if (pdf) await pdf.destroy();
   }
-
-  const doc = new DocxDocument({ sections });
-  const buffer = await DocxPacker.toBuffer(doc);
-
-  return {
-    file: new Blob([new Uint8Array(buffer)], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    }),
-    filename: changeExtension(file.name, 'docx'),
-    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  };
 }
 
 
@@ -379,21 +390,28 @@ export async function extractPdfText(file: File): Promise<ConversionResult> {
   GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
   const bytes = await file.arrayBuffer();
-  const pdf = await getDocument({ data: bytes }).promise;
-  let fullText = '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pdf: any = null;
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items.map((item: any) => item.str).join(' ');
-    fullText += `--- Page ${i} ---\n${pageText}\n\n`;
+  try {
+    pdf = await getDocument({ data: bytes }).promise;
+    let fullText = '';
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((item: any) => (item as { str: string }).str).join(' ');
+      fullText += `--- Page ${i} ---\n${pageText}\n\n`;
+    }
+
+    return {
+      file: new Blob([fullText], { type: 'text/plain' }),
+      filename: changeExtension(file.name, 'txt'),
+      mimeType: 'text/plain',
+    };
+  } finally {
+    if (pdf) await pdf.destroy();
   }
-
-  return {
-    file: new Blob([fullText], { type: 'text/plain' }),
-    filename: changeExtension(file.name, 'txt'),
-    mimeType: 'text/plain',
-  };
 }
 
 export async function pdfToImages(file: File, format: 'png' | 'jpeg' = 'png', quality: number = 0.95, options?: ConverterOptions): Promise<ConversionResult[]> {
@@ -401,38 +419,45 @@ export async function pdfToImages(file: File, format: 'png' | 'jpeg' = 'png', qu
   GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
   const bytes = await file.arrayBuffer();
-  const pdf = await getDocument({ data: bytes }).promise;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pdf: any = null;
   const results: ConversionResult[] = [];
-  const total = pdf.numPages;
 
-  for (let i = 1; i <= total; i++) {
-    if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2 });
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d')!;
+  try {
+    pdf = await getDocument({ data: bytes }).promise;
+    const total = pdf.numPages;
 
-    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+    for (let i = 1; i <= total; i++) {
+      if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d')!;
 
-    const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((b) => {
-        if (b) resolve(b);
-        else reject(new Error('Failed to render PDF page as image.'));
-      }, mimeType, quality);
-    });
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
 
-    results.push({
-      file: blob,
-      filename: `${changeExtension(file.name, '')}_page-${i}.${format}`,
-      mimeType,
-    });
-    options?.onProgress?.(Math.round((i / total) * 100), `Rendering page ${i} of ${total}`);
+      const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b) resolve(b);
+          else reject(new Error('Failed to render PDF page as image.'));
+        }, mimeType, quality);
+      });
+
+      results.push({
+        file: blob,
+        filename: `${changeExtension(file.name, '')}_page-${i}.${format}`,
+        mimeType,
+      });
+      options?.onProgress?.(Math.round((i / total) * 100), `Rendering page ${i} of ${total}`);
+    }
+
+    return results;
+  } finally {
+    if (pdf) await pdf.destroy();
   }
-
-  return results;
 }
 
 export async function pdfToSvg(file: File, options?: ConverterOptions): Promise<ConversionResult[]> {
@@ -440,37 +465,44 @@ export async function pdfToSvg(file: File, options?: ConverterOptions): Promise<
   GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
   const bytes = await file.arrayBuffer();
-  const pdf = await getDocument({ data: bytes }).promise;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pdf: any = null;
   const results: ConversionResult[] = [];
-  const total = pdf.numPages;
 
-  for (let i = 1; i <= total; i++) {
-    if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2 });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas 2D context is not available in this browser.');
+  try {
+    pdf = await getDocument({ data: bytes }).promise;
+    const total = pdf.numPages;
 
-    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-    
-    const imgData = canvas.toDataURL('image/png');
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewport.width} ${viewport.height}" width="${viewport.width}" height="${viewport.height}">
-  <image href="${imgData}" width="${viewport.width}" height="${viewport.height}"/>
-</svg>`;
-    
-    results.push({
-      file: new Blob([svgString], { type: 'image/svg+xml' }),
-      filename: `${changeExtension(file.name, '')}_page-${i}.svg`,
-      mimeType: 'image/svg+xml',
-    });
-    options?.onProgress?.(Math.round((i / total) * 100), `Rendering SVG page ${i} of ${total}`);
+    for (let i = 1; i <= total; i++) {
+      if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2 });
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context is not available in this browser.');
+
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      
+      const imgData = canvas.toDataURL('image/png');
+      const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewport.width} ${viewport.height}" width="${viewport.width}" height="${viewport.height}">
+    <image href="${imgData}" width="${viewport.width}" height="${viewport.height}"/>
+  </svg>`;
+      
+      results.push({
+        file: new Blob([svgString], { type: 'image/svg+xml' }),
+        filename: `${changeExtension(file.name, '')}_page-${i}.svg`,
+        mimeType: 'image/svg+xml',
+      });
+      options?.onProgress?.(Math.round((i / total) * 100), `Rendering SVG page ${i} of ${total}`);
+    }
+
+    return results;
+  } finally {
+    if (pdf) await pdf.destroy();
   }
-
-  return results;
 }
 
 export async function imagesToPdf(files: File[], options?: ConverterOptions): Promise<ConversionResult> {

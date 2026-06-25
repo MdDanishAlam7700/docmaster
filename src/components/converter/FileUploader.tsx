@@ -50,9 +50,31 @@ export function FileUploader({
 
   useEffect(() => {
     return () => {
-      previewUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      previewUrlsRef.current.forEach(url => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          console.error('Failed to revoke object URL on unmount:', e);
+        }
+      });
     };
   }, []);
+
+  // Sync previews: revoke any preview URLs no longer present in files (e.g. on full reset)
+  useEffect(() => {
+    const activePreviews = new Set(
+      files.map(f => f.preview).filter((p): p is string => Boolean(p))
+    );
+    const staleUrls = previewUrlsRef.current.filter(url => !activePreviews.has(url));
+    staleUrls.forEach(url => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        console.error('Failed to revoke stale object URL:', e);
+      }
+    });
+    previewUrlsRef.current = previewUrlsRef.current.filter(url => activePreviews.has(url));
+  }, [files]);
 
   useEffect(() => {
     if (fileError) {

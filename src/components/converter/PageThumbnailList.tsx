@@ -91,32 +91,50 @@ export function PageThumbnailList({
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pdf: any = null;
     setLoading(true);
     (async () => {
-      const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-      GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
+      try {
+        const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
+        GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
-      const bytes = await file.arrayBuffer();
-      const pdf = await getDocument({ data: bytes }).promise;
-      const items: PageInfo[] = [];
+        const bytes = await file.arrayBuffer();
+        pdf = await getDocument({ data: bytes }).promise;
+        const items: PageInfo[] = [];
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        if (cancelled) return;
-        const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 0.3 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Canvas not available');
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-        const url = canvas.toDataURL('image/webp', 0.6);
-        items.push({ index: i - 1, src: url });
-      }
+        for (let i = 1; i <= pdf.numPages; i++) {
+          if (cancelled) break;
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 0.3 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Canvas not available');
+          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+          const url = canvas.toDataURL('image/webp', 0.6);
+          items.push({ index: i - 1, src: url });
+          
+          // Force immediately freeing browser canvas context memory
+          canvas.width = 0;
+          canvas.height = 0;
+        }
 
-      if (!cancelled) {
-        setPages(items);
-        setLoading(false);
+        if (!cancelled) {
+          setPages(items);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Failed to render page thumbnails:', err);
+      } finally {
+        if (pdf) {
+          try {
+            await pdf.destroy();
+          } catch (e) {
+            console.error('Failed to destroy PDF document:', e);
+          }
+        }
       }
     })();
 
