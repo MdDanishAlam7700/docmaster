@@ -23,3 +23,7 @@
 - tesseract.js — OCR
 - jimp — Image processing
 - @dnd-kit — Drag-and-drop
+
+## Git Constraints
+* **NEVER stage, commit, or push `DEPLOY.md` to GitHub.** This file is specifically excluded from version control and must remain local to avoid exposing user/deployment secrets. Any operations must respect `.gitignore` constraints.
+

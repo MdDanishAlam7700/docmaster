@@ -35,7 +35,7 @@ yarn-error.log*
 
 # vercel
 .vercel
-
+DEPLOY.md
 # dev / agent files
 CLAUDE.md
 dev-log-*.txt

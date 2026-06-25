@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, ArrowRight, Zap, Star } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { ScrollReveal } from '@/components/ui/scroll-reveal';
 
 const categoryGradients: Record<string, string> = {
   'pdf-tools': 'from-blue-600 to-blue-400',
@@ -176,8 +177,10 @@ export default function HomePage() {
             {searchResults.length} tool{searchResults.length !== 1 ? 's' : ''} found
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {searchResults.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
+            {searchResults.map((tool, index) => (
+              <ScrollReveal key={tool.id} delay={index * 30}>
+                <ToolCard tool={tool} />
+              </ScrollReveal>
             ))}
           </div>
         </div>
@@ -185,13 +188,15 @@ export default function HomePage() {
         <>
           {/* Featured Tools */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2">
+            <ScrollReveal className="flex items-center gap-2" delay={0}>
               <Star className="h-5 w-5 text-primary" />
               <h2 className="text-xl font-bold">Featured Tools</h2>
-            </div>
+            </ScrollReveal>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {featuredTools.map((tool) => (
-                <FeaturedToolCard key={tool.id} tool={tool} />
+              {featuredTools.map((tool, index) => (
+                <ScrollReveal key={tool.id} delay={index * 40}>
+                  <FeaturedToolCard tool={tool} />
+                </ScrollReveal>
               ))}
             </div>
           </section>
@@ -201,13 +206,15 @@ export default function HomePage() {
             const catTools = getToolsByCategory(cat.id);
             return (
               <section key={cat.id} className="space-y-4">
-                <div>
+                <ScrollReveal>
                   <h2 className="text-xl font-bold">{cat.name}</h2>
                   <p className="text-sm text-muted-foreground">{cat.description}</p>
-                </div>
+                </ScrollReveal>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {catTools.map((tool) => (
-                    <ToolCard key={tool.id} tool={tool} />
+                  {catTools.map((tool, index) => (
+                    <ScrollReveal key={tool.id} delay={index * 30}>
+                      <ToolCard tool={tool} />
+                    </ScrollReveal>
                   ))}
                 </div>
               </section>
