@@ -137,34 +137,34 @@ export function FileUploader({
       <div
         {...getRootProps()}
         className={cn(
-          'relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200',
+          'relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-300',
           isDragActive
-            ? 'border-primary bg-primary/5 scale-[1.02]'
-            : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-accent/50'
+            ? 'border-primary bg-primary/5 scale-[1.01]'
+            : 'border-muted-foreground/20 hover:border-primary/40 hover:bg-accent/20 hover:shadow-md'
         )}
       >
         <input {...getInputProps()} />
         <div className="flex flex-col items-center gap-3">
           <div className={cn(
-            'h-14 w-14 rounded-2xl flex items-center justify-center transition-colors',
-            isDragActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+            'h-14 w-14 rounded-2xl flex items-center justify-center transition-colors shadow-inner',
+            isDragActive ? 'bg-primary text-primary-foreground' : 'bg-muted/70 text-muted-foreground'
           )}>
             <Upload className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-lg font-medium">{isDragActive ? 'Drop files here' : label}</p>
+            <p className="text-lg font-bold tracking-tight font-heading">{isDragActive ? 'Drop files here' : label}</p>
             <p className="text-sm text-muted-foreground mt-1">{description}</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Max file size: {MAX_FILE_SIZE_STR} (all processing is in-browser)</p>
+            <p className="text-xs text-muted-foreground/60 mt-1.5">Max file size: {MAX_FILE_SIZE_STR} (all processing is in-browser)</p>
           </div>
-          <Button variant="outline" size="sm" type="button">
+          <Button variant="outline" size="sm" type="button" className="rounded-xl border-primary/20 hover:bg-primary/5">
             Browse Files
           </Button>
         </div>
       </div>
 
       {fileError && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm" role="alert">
-          <span className="text-xs font-medium">{fileError}</span>
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-sm" role="alert">
+          <span className="text-xs font-semibold">{fileError}</span>
         </div>
       )}
 
@@ -175,23 +175,23 @@ export function FileUploader({
             return (
               <div
                 key={f.id}
-                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                className="flex items-center gap-3 p-3 rounded-xl glass-card bg-card/65 hover:bg-accent/35"
               >
                 {f.preview ? (
-                  <img src={f.preview} alt={f.name} className="h-10 w-10 rounded-lg object-cover shrink-0" />
+                  <img src={f.preview} alt={f.name} className="h-10 w-10 rounded-lg object-cover shrink-0 border border-border/30" />
                 ) : (
-                  <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0 border border-border/30">
                     <Icon className="h-5 w-5 text-muted-foreground" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{f.name}</p>
+                  <p className="text-sm font-bold truncate">{f.name}</p>
                   <p className="text-xs text-muted-foreground">{formatFileSize(f.size)}</p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 shrink-0"
+                  className="h-8 w-8 shrink-0 rounded-lg hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => removeFile(f.id)}
                 >
                   <X className="h-4 w-4" />

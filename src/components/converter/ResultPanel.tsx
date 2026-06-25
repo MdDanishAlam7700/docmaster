@@ -45,14 +45,14 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
   if (progress.status === 'idle') return null;
 
   return (
-    <div className="p-4 md:p-6 rounded-xl border border-dashed border-border bg-muted/20 animate-in fade-in duration-200">
+    <div className="p-4 md:p-6 rounded-2xl border border-dashed border-border/40 bg-accent/25 animate-in fade-in duration-200">
       <div className="space-y-4">
         {progress.status === 'processing' && (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <p className="text-sm font-medium">{progress.message || 'Processing...'}</p>
-              <Button variant="outline" size="sm" onClick={onCancel} className="ml-auto">
+              <p className="text-sm font-semibold">{progress.message || 'Processing...'}</p>
+              <Button variant="outline" size="sm" onClick={onCancel} className="ml-auto rounded-xl">
                 Cancel
               </Button>
             </div>
@@ -64,17 +64,17 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
         )}
 
         {progress.status === 'error' && (
-          <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 text-destructive">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 text-destructive border border-destructive/20">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium">Conversion Failed</p>
+              <p className="text-sm font-bold">Conversion Failed</p>
               <p className="text-sm mt-1">{progress.error || 'An unknown error occurred'}</p>
             </div>
           </div>
         )}
 
         {progress.status === 'cancelled' && (
-          <div className="flex items-center gap-3 p-4 rounded-lg bg-muted">
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-muted/40 border border-border/20">
             <AlertCircle className="h-5 w-5 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">Conversion cancelled.</p>
           </div>
@@ -82,9 +82,9 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
 
         {progress.status === 'complete' && result && (
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400">
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
               <CheckCircle2 className="h-5 w-5" />
-              <p className="text-sm font-medium">
+              <p className="text-sm font-semibold">
                 {Array.isArray(result)
                   ? `${result.length} files converted successfully`
                   : 'Conversion complete'}
@@ -94,25 +94,25 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
             {previewUrl && (
               <>
                 {previewType.startsWith('image/') && (
-                  <div className="rounded-lg overflow-hidden border">
+                  <div className="rounded-xl overflow-hidden border border-border/30 bg-muted/20">
                     <img src={previewUrl} alt="Preview" className="max-h-64 w-full object-contain bg-muted" />
                   </div>
                 )}
 
                 {previewType === 'text/plain' && (
-                  <div className="rounded-lg border bg-muted p-4 max-h-48 overflow-auto">
+                  <div className="rounded-xl border border-border/30 bg-muted/20 p-4 max-h-48 overflow-auto font-mono text-xs">
                     <PreviewText url={previewUrl} />
                   </div>
                 )}
 
                 {previewType === 'text/html' && (
-                  <div className="rounded-lg border bg-muted p-4 max-h-64 overflow-auto">
+                  <div className="rounded-xl border border-border/30 bg-muted/20 p-4 max-h-64 overflow-auto">
                     <PreviewText url={previewUrl} preview />
                   </div>
                 )}
 
                 {previewType === 'application/pdf' && (
-                  <div className="rounded-lg overflow-hidden border">
+                  <div className="rounded-xl overflow-hidden border border-border/30 bg-muted/20">
                     <embed
                       src={previewUrl}
                       type="application/pdf"
@@ -122,13 +122,13 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
                 )}
 
                 {previewType === 'application/json' && (
-                  <div className="rounded-lg border bg-muted p-4 max-h-48 overflow-auto">
+                  <div className="rounded-xl border border-border/30 bg-muted/20 p-4 max-h-48 overflow-auto">
                     <PreviewText url={previewUrl} />
                   </div>
                 )}
 
                 {previewType === 'text/csv' && (
-                  <div className="rounded-lg border bg-muted p-4 max-h-48 overflow-auto font-mono text-xs">
+                  <div className="rounded-xl border border-border/30 bg-muted/20 p-4 max-h-48 overflow-auto font-mono text-xs">
                     <PreviewText url={previewUrl} />
                   </div>
                 )}
@@ -136,21 +136,21 @@ export function ResultPanel({ progress, result, fileName, onReset, onCancel }: R
             )}
 
             {!previewUrl && result && !Array.isArray(result) && (
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-muted/30 border border-border/20">
                 <File className="h-8 w-8 text-muted-foreground shrink-0" />
                 <div className="text-sm text-muted-foreground">
-                  <p className="font-medium">{result.filename}</p>
+                  <p className="font-bold">{result.filename}</p>
                   <p className="text-xs">{(result.file.size / 1024).toFixed(1)} KB &middot; {result.mimeType}</p>
                 </div>
               </div>
             )}
 
             <div className="flex gap-3">
-              <Button onClick={handleDownload} className="flex-1">
+              <Button onClick={handleDownload} className="flex-1 bg-neon-gradient border-none rounded-xl text-primary-foreground font-semibold cursor-pointer">
                 <Download className="h-4 w-4 mr-2" />
                 Download
               </Button>
-              <Button variant="outline" onClick={onReset}>
+              <Button variant="outline" onClick={onReset} className="rounded-xl border-primary/20 hover:bg-primary/5">
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Convert Another
               </Button>
