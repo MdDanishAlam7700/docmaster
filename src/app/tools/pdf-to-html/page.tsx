@@ -15,9 +15,12 @@ export default function PdfToHtmlPage() {
     const bytes = await file.arrayBuffer();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pdf: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let loadingTask: any = null;
 
     try {
-      pdf = await getDocument({ data: bytes }).promise;
+      loadingTask = getDocument({ data: bytes });
+      pdf = await loadingTask.promise;
       const total = pdf.numPages;
       const pageSections: string[] = [];
 
@@ -111,7 +114,16 @@ export default function PdfToHtmlPage() {
         mimeType: 'text/html',
       };
     } finally {
-      if (pdf) await pdf.destroy();
+      if (pdf) {
+        try {
+          await pdf.cleanup();
+        } catch {}
+      }
+      if (loadingTask) {
+        try {
+          await loadingTask.destroy();
+        } catch {}
+      }
     }
   };
 

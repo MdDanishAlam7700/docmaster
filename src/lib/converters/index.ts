@@ -235,10 +235,13 @@ export async function ocrPdf(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pdf: any = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let loadingTask: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let worker: any = null;
 
   try {
-    pdf = await getDocument({ data: bytes }).promise;
+    loadingTask = getDocument({ data: bytes });
+    pdf = await loadingTask.promise;
     const totalPages = pdf.numPages;
 
     worker = await createWorker('eng');
@@ -273,7 +276,16 @@ export async function ocrPdf(
     };
   } finally {
     if (worker) await worker.terminate();
-    if (pdf) await pdf.destroy();
+    if (pdf) {
+      try {
+        await pdf.cleanup();
+      } catch {}
+    }
+    if (loadingTask) {
+      try {
+        await loadingTask.destroy();
+      } catch {}
+    }
   }
 }
 
@@ -297,9 +309,12 @@ export async function pdfToDocx(file: File, options?: ConverterOptions): Promise
   const bytes = await file.arrayBuffer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pdf: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let loadingTask: any = null;
 
   try {
-    pdf = await getDocument({ data: bytes }).promise;
+    loadingTask = getDocument({ data: bytes });
+    pdf = await loadingTask.promise;
     const total = pdf.numPages;
     const sections: ISectionOptions[] = [];
 
@@ -380,7 +395,16 @@ export async function pdfToDocx(file: File, options?: ConverterOptions): Promise
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
   } finally {
-    if (pdf) await pdf.destroy();
+    if (pdf) {
+      try {
+        await pdf.cleanup();
+      } catch {}
+    }
+    if (loadingTask) {
+      try {
+        await loadingTask.destroy();
+      } catch {}
+    }
   }
 }
 
@@ -392,9 +416,12 @@ export async function extractPdfText(file: File): Promise<ConversionResult> {
   const bytes = await file.arrayBuffer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pdf: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let loadingTask: any = null;
 
   try {
-    pdf = await getDocument({ data: bytes }).promise;
+    loadingTask = getDocument({ data: bytes });
+    pdf = await loadingTask.promise;
     let fullText = '';
 
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -410,7 +437,16 @@ export async function extractPdfText(file: File): Promise<ConversionResult> {
       mimeType: 'text/plain',
     };
   } finally {
-    if (pdf) await pdf.destroy();
+    if (pdf) {
+      try {
+        await pdf.cleanup();
+      } catch {}
+    }
+    if (loadingTask) {
+      try {
+        await loadingTask.destroy();
+      } catch {}
+    }
   }
 }
 
@@ -421,10 +457,13 @@ export async function pdfToImages(file: File, format: 'png' | 'jpeg' = 'png', qu
   const bytes = await file.arrayBuffer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pdf: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let loadingTask: any = null;
   const results: ConversionResult[] = [];
 
   try {
-    pdf = await getDocument({ data: bytes }).promise;
+    loadingTask = getDocument({ data: bytes });
+    pdf = await loadingTask.promise;
     const total = pdf.numPages;
 
     for (let i = 1; i <= total; i++) {
@@ -456,7 +495,16 @@ export async function pdfToImages(file: File, format: 'png' | 'jpeg' = 'png', qu
 
     return results;
   } finally {
-    if (pdf) await pdf.destroy();
+    if (pdf) {
+      try {
+        await pdf.cleanup();
+      } catch {}
+    }
+    if (loadingTask) {
+      try {
+        await loadingTask.destroy();
+      } catch {}
+    }
   }
 }
 
@@ -467,10 +515,13 @@ export async function pdfToSvg(file: File, options?: ConverterOptions): Promise<
   const bytes = await file.arrayBuffer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pdf: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let loadingTask: any = null;
   const results: ConversionResult[] = [];
 
   try {
-    pdf = await getDocument({ data: bytes }).promise;
+    loadingTask = getDocument({ data: bytes });
+    pdf = await loadingTask.promise;
     const total = pdf.numPages;
 
     for (let i = 1; i <= total; i++) {
@@ -501,7 +552,16 @@ export async function pdfToSvg(file: File, options?: ConverterOptions): Promise<
 
     return results;
   } finally {
-    if (pdf) await pdf.destroy();
+    if (pdf) {
+      try {
+        await pdf.cleanup();
+      } catch {}
+    }
+    if (loadingTask) {
+      try {
+        await loadingTask.destroy();
+      } catch {}
+    }
   }
 }
 

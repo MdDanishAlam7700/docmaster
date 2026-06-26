@@ -509,9 +509,12 @@ export async function pdfToExcel(
   const bytes = await file.arrayBuffer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pdf: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let loadingTask: any = null;
 
   try {
-    pdf = await getDocument({ data: bytes }).promise;
+    loadingTask = getDocument({ data: bytes });
+    pdf = await loadingTask.promise;
     const totalPages = pdf.numPages;
 
     const ExcelJS = await import('exceljs');
@@ -607,6 +610,15 @@ export async function pdfToExcel(
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
   } finally {
-    if (pdf) await pdf.destroy();
+    if (pdf) {
+      try {
+        await pdf.cleanup();
+      } catch {}
+    }
+    if (loadingTask) {
+      try {
+        await loadingTask.destroy();
+      } catch {}
+    }
   }
 }

@@ -93,6 +93,8 @@ export function PageThumbnailList({
     let cancelled = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pdf: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let loadingTask: any = null;
     setLoading(true);
     (async () => {
       try {
@@ -100,7 +102,8 @@ export function PageThumbnailList({
         GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.mjs`;
 
         const bytes = await file.arrayBuffer();
-        pdf = await getDocument({ data: bytes }).promise;
+        loadingTask = getDocument({ data: bytes });
+        pdf = await loadingTask.promise;
         const items: PageInfo[] = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -130,7 +133,12 @@ export function PageThumbnailList({
       } finally {
         if (pdf) {
           try {
-            await pdf.destroy();
+            await pdf.cleanup();
+          } catch {}
+        }
+        if (loadingTask) {
+          try {
+            await loadingTask.destroy();
           } catch (e) {
             console.error('Failed to destroy PDF document:', e);
           }
