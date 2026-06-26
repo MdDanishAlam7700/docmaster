@@ -147,8 +147,8 @@ export async function runWithSanitizedStyleSheets<T>(
   window.getComputedStyle = function(elt: Element, pseudoElt?: string | null): CSSStyleDeclaration {
     const styles = originalGetComputedStyleLocal.call(window, elt, pseudoElt);
     return new Proxy(styles, {
-      get(target, prop, receiver) {
-        const val = Reflect.get(target, prop, receiver);
+      get(target, prop) {
+        const val = Reflect.get(target, prop);
         if (typeof val === 'function') {
           if (prop === 'getPropertyValue') {
             return function(propertyName: string) {
