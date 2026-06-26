@@ -13,7 +13,7 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import { runWithSanitizedStyleSheets } from './color-sanitizer';
+
 
 export interface CaptureOptions {
   /** html2canvas devicePixelRatio override.  Default: 2 (sharp on HiDPI). */
@@ -78,24 +78,22 @@ export async function captureComponent(
     // is not part of any existing React tree.
     flushSync(() => root.render(jsx));
 
-    return await runWithSanitizedStyleSheets(container, async () => {
-      // After the flush, the browser has laid out the component.
-      const widthPx = Math.min(container.scrollWidth, maxWidthPx);
-      const heightPx = container.scrollHeight;
+    // After the flush, the browser has laid out the component.
+    const widthPx = Math.min(container.scrollWidth, maxWidthPx);
+    const heightPx = container.scrollHeight;
 
-      const canvas: HTMLCanvasElement = await html2canvas(container, {
-        scale,
-        backgroundColor: bgColor,
-        useCORS: true,
-        logging: false,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: widthPx,
-        windowHeight: heightPx,
-      });
-
-      return { canvas, widthPx, heightPx };
+    const canvas: HTMLCanvasElement = await html2canvas(container, {
+      scale,
+      backgroundColor: bgColor,
+      useCORS: true,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: widthPx,
+      windowHeight: heightPx,
     });
+
+    return { canvas, widthPx, heightPx };
   } finally {
     root.unmount();
     if (document.body.contains(container)) {

@@ -1,5 +1,5 @@
 import { ConversionResult } from '@/lib/types';
-import { runWithSanitizedStyleSheets } from './color-sanitizer';
+import { sanitizeHtmlColors } from './color-sanitizer';
 
 // ─────────────────────────────────────────────────────────────
 // Core HTML → PDF renderer
@@ -51,66 +51,64 @@ export async function renderHtmlToPdf(
     'box-sizing:border-box',
     'overflow:visible',
   ].join(';');
-  container.innerHTML = html;
+  container.innerHTML = sanitizeHtmlColors(html);
   document.body.appendChild(container);
 
   try {
-    return await runWithSanitizedStyleSheets(container, async () => {
-      // ── 3. Measure the actual rendered content size ──────────
-      const contentW = container.scrollWidth;
-      const contentH = container.scrollHeight;
+    // ── 3. Measure the actual rendered content size ──────────
+    const contentW = container.scrollWidth;
+    const contentH = container.scrollHeight;
 
-      // Auto-detect orientation: landscape when content is wider than tall
-      const autoOrientation: 'portrait' | 'landscape' =
-        opts.orientation ||
-        (contentW > 760 && contentW > contentH * 0.8 ? 'landscape' : 'portrait');
+    // Auto-detect orientation: landscape when content is wider than tall
+    const autoOrientation: 'portrait' | 'landscape' =
+      opts.orientation ||
+      (contentW > 760 && contentW > contentH * 0.8 ? 'landscape' : 'portrait');
 
-      // A4 dimensions in mm
-      const pageWmm = autoOrientation === 'landscape' ? 297 : 210;
-      const pageHmm = autoOrientation === 'landscape' ? 210 : 297;
+    // A4 dimensions in mm
+    const pageWmm = autoOrientation === 'landscape' ? 297 : 210;
+    const pageHmm = autoOrientation === 'landscape' ? 210 : 297;
 
-      // Available content width in px at 96dpi (1mm = 3.7795px)
-      const availableWidthPx = Math.round((pageWmm - marginMm * 2) * 3.7795);
+    // Available content width in px at 96dpi (1mm = 3.7795px)
+    const availableWidthPx = Math.round((pageWmm - marginMm * 2) * 3.7795);
 
-      // Shrink-wrap the container to either available width or content width
-      const renderWidth = Math.min(contentW, availableWidthPx);
-      container.style.width = `${renderWidth}px`;
+    // Shrink-wrap the container to either available width or content width
+    const renderWidth = Math.min(contentW, availableWidthPx);
+    container.style.width = `${renderWidth}px`;
 
-      const name = filename.replace(/\.[^.]+$/, '.pdf');
+    const name = filename.replace(/\.[^.]+$/, '.pdf');
 
-      const options = {
-        margin: [marginMm, marginMm, marginMm, marginMm],
-        filename: name,
-        image: { type: 'jpeg', quality },
-        html2canvas: {
-          scale,
-          useCORS: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: renderWidth,
-          windowHeight: contentH,
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: [pageWmm, pageHmm],
-          orientation: autoOrientation,
-        },
-        pagebreak: {
-          mode: ['css', 'legacy'],
-          before: '.page-break',
-          avoid: ['tr', 'td', 'th', 'img'],
-        },
-      };
+    const options = {
+      margin: [marginMm, marginMm, marginMm, marginMm],
+      filename: name,
+      image: { type: 'jpeg', quality },
+      html2canvas: {
+        scale,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: renderWidth,
+        windowHeight: contentH,
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: [pageWmm, pageHmm],
+        orientation: autoOrientation,
+      },
+      pagebreak: {
+        mode: ['css', 'legacy'],
+        before: '.page-break',
+        avoid: ['tr', 'td', 'th', 'img'],
+      },
+    };
 
-      const pdfBlob: Blob = await html2pdf().set(options).from(container).outputPdf('blob');
-      return {
-        file: pdfBlob,
-        filename: name,
-        mimeType: 'application/pdf',
-      };
-    });
+    const pdfBlob: Blob = await html2pdf().set(options).from(container).outputPdf('blob');
+    return {
+      file: pdfBlob,
+      filename: name,
+      mimeType: 'application/pdf',
+    };
   } finally {
     if (document.body.contains(container)) {
       document.body.removeChild(container);
@@ -145,24 +143,22 @@ export async function renderHtmlToCanvas(
     'box-sizing:border-box',
     'overflow:visible',
   ].join(';');
-  container.innerHTML = html;
+  container.innerHTML = sanitizeHtmlColors(html);
   document.body.appendChild(container);
 
   try {
-    return await runWithSanitizedStyleSheets(container, async () => {
-      // Measure actual dimensions with styles applied
-      const actualW = Math.min(container.scrollWidth, maxWidthPx);
-      container.style.width = `${actualW}px`;
+    // Measure actual dimensions with styles applied
+    const actualW = Math.min(container.scrollWidth, maxWidthPx);
+    container.style.width = `${actualW}px`;
 
-      return await html2canvas(container, {
-        scale,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        logging: false,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: actualW,
-      });
+    return await html2canvas(container, {
+      scale,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: actualW,
     });
   } finally {
     if (document.body.contains(container)) {
