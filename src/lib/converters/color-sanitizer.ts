@@ -1,5 +1,7 @@
 'use client';
 
+let originalGetComputedStyle: typeof window.getComputedStyle | null = null;
+
 function resolveColor(cssValue: string): string {
   if (typeof window === 'undefined') return '#000000';
   try {
@@ -7,12 +9,44 @@ function resolveColor(cssValue: string): string {
     el.style.display = 'none';
     el.style.color = cssValue;
     document.body.appendChild(el);
-    const resolved = getComputedStyle(el).color;
+    
+    // Retrieve computed style using the original getComputedStyle to avoid proxy recursion
+    const getStyle = originalGetComputedStyle || window.getComputedStyle;
+    let resolved = getStyle.call(window, el).color;
     document.body.removeChild(el);
-    return resolved || '#000000';
+
+    if (!resolved) return '#000000';
+
+    // If the resolved color contains oklch/oklab/lab/lch/color functions,
+    // render it on a 1x1 canvas to convert it to standard rgba pixels.
+    if (/\b(oklch|oklab|lab|lch|color)\s*\(/i.test(resolved)) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = resolved;
+        ctx.fillRect(0, 0, 1, 1);
+        const imgData = ctx.getImageData(0, 0, 1, 1).data;
+        const [r, g, b, a] = imgData;
+        return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+      }
+    }
+    return resolved;
   } catch {
     return '#000000';
   }
+}
+
+function sanitizeCSSValue(val: any): any {
+  if (typeof val !== 'string') return val;
+  if (/\b(oklch|oklab|lab|lch|color)\s*\(/i.test(val)) {
+    return val.replace(
+      /\b(oklch|oklab|lab|lch|color)\s*\([^)]+\)/gi,
+      (match) => resolveColor(match)
+    );
+  }
+  return val;
 }
 
 export function getSafeStyleBlock(styleText: string): string {
@@ -106,10 +140,42 @@ export async function runWithSanitizedStyleSheets<T>(
     console.warn('[DocMaster] Failed to redefine document.styleSheets', e);
   }
 
+  // 4. Hook window.getComputedStyle to intercept and resolve modern colors on computed styles
+  const originalGetComputedStyleLocal = window.getComputedStyle;
+  originalGetComputedStyle = originalGetComputedStyleLocal;
+
+  window.getComputedStyle = function(elt: Element, pseudoElt?: string | null): CSSStyleDeclaration {
+    const styles = originalGetComputedStyleLocal.call(window, elt, pseudoElt);
+    return new Proxy(styles, {
+      get(target, prop, receiver) {
+        const val = Reflect.get(target, prop, receiver);
+        if (typeof val === 'function') {
+          if (prop === 'getPropertyValue') {
+            return function(propertyName: string) {
+              const originalVal = target.getPropertyValue(propertyName);
+              return sanitizeCSSValue(originalVal);
+            };
+          }
+          return val.bind(target);
+        }
+        if (typeof prop === 'string' && isNaN(Number(prop))) {
+          return sanitizeCSSValue(val);
+        }
+        return val;
+      }
+    }) as unknown as CSSStyleDeclaration;
+  };
+
   try {
     return await action();
   } finally {
-    // 4. Restore original document.styleSheets descriptor
+    // 5. Restore original window.getComputedStyle
+    if (originalGetComputedStyleLocal) {
+      window.getComputedStyle = originalGetComputedStyleLocal;
+    }
+    originalGetComputedStyle = null;
+
+    // 6. Restore original document.styleSheets descriptor
     try {
       if (originalDescriptor) {
         Object.defineProperty(document, 'styleSheets', originalDescriptor);
